@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+env/
+.env
+.env.*
+
+# Local/editor
+.vscode/
+.idea/
+.DS_Store
+.claude/
+
+# Private/scratch notes
+previous_chat.md
+*.ipynb
+notebook_extracted/
+scripts/extract_notebook.py
+
+# Data and datasets
+data/
+datasets/
+SEED IV/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.mat
+*.npy
+*.npz
+
+# Results and generated artifacts
+results/
+outputs/
+runs/
+logs/
+wandb/
+mlruns/
+
+# Models/checkpoints
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.h5
+*.pkl
+*.joblib
+
+# External repos / local clones
+PC-SSL/
+timesfm/
+
+# Local reference material
+URE/
