@@ -22,8 +22,15 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import os
 import sys
 from pathlib import Path
+
+# Ops: pin BLAS to 1 thread PER process so the joblib fan-out across cores does not
+# oversubscribe (N parallel fits x M BLAS threads). Must precede numpy/sklearn import.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 import numpy as np
 
@@ -51,47 +58,73 @@ def stratified_subsample(y_sub, frac, rng):
     return np.concatenate(keep)
 
 
-def curve_eval(X, subj, y, k, classifier, fracs, subsample_seeds):
-    """Per-fraction acc/F1/kappa (mean±std over the SAME subject-disjoint folds
-    as the headline F13; low-label noise reduced by averaging subsample seeds)."""
+def _fit_one(X, y, subj, frac, fi, test_subj, s, classifier):
+    """One (fraction, fold, subsample-seed) fit — module-level so joblib memmaps
+    the big X/y arrays once instead of pickling them per task. Returns %-scaled
+    acc/F1 and raw kappa."""
     from sklearn.metrics import accuracy_score, cohen_kappa_score, f1_score
+
+    te = np.isin(subj, test_subj)
+    tr_idx = np.where(~te)[0]
+    if len(tr_idx) == 0 or te.sum() == 0:
+        return None
+    if frac >= 1.0:
+        sel = tr_idx
+    else:
+        rng = np.random.default_rng(1000 * s + fi)
+        sel = tr_idx[stratified_subsample(y[tr_idx], frac, rng)]
+    clf = CLASSIFIERS[classifier]()
+    clf.fit(X[sel], y[sel])
+    pred = clf.predict(X[te])
+    return (frac, fi,
+            accuracy_score(y[te], pred) * 100,
+            f1_score(y[te], pred, average="macro", zero_division=0) * 100,
+            cohen_kappa_score(y[te], pred))
+
+
+def curve_eval(X, subj, y, k, classifier, fracs, subsample_seeds, n_jobs=-1):
+    """Per-fraction acc/F1/kappa (mean±std over the SAME subject-disjoint folds
+    as the headline F13). All (fraction, fold, seed) fits are independent, so they
+    fan out across cores via joblib; results are identical to the serial version."""
+    from collections import defaultdict
+
+    from joblib import Parallel, delayed
 
     subjects = np.array(sorted(set(subj.tolist())))
     rng_fold = np.random.default_rng(42)  # identical split to phase2_f13_sleep
     folds = np.array_split(rng_fold.permutation(subjects), k)
-    factory = CLASSIFIERS[classifier]
+
+    tasks = []
+    for frac in fracs:
+        seeds = [0] if frac >= 1.0 else list(range(subsample_seeds))
+        for fi, test_subj in enumerate(folds):
+            for s in seeds:
+                tasks.append((frac, fi, test_subj, s))
+    LOG.info("curve: %d fits across %d fracs x %d folds (n_jobs=%d)",
+             len(tasks), len(fracs), k, n_jobs)
+    raw = Parallel(n_jobs=n_jobs, max_nbytes="1M")(
+        delayed(_fit_one)(X, y, subj, frac, fi, ts, s, classifier)
+        for (frac, fi, ts, s) in tasks
+    )
+
+    bucket = defaultdict(lambda: defaultdict(list))  # frac -> fold -> [(acc,f1,kap)]
+    for r in raw:
+        if r is None:
+            continue
+        frac, fi, acc, f1, kap = r
+        bucket[frac][fi].append((acc, f1, kap))
 
     out = {}
     for frac in fracs:
-        fold_acc, fold_f1, fold_kap = [], [], []
-        for fi, test_subj in enumerate(folds):
-            te = np.isin(subj, test_subj)
-            tr_idx = np.where(~te)[0]
-            if len(tr_idx) == 0 or te.sum() == 0:
-                continue
-            seeds = [0] if frac >= 1.0 else list(range(subsample_seeds))
-            a_s, f_s, k_s = [], [], []
-            for s in seeds:
-                if frac >= 1.0:
-                    sel = tr_idx
-                else:
-                    rng = np.random.default_rng(1000 * s + fi)
-                    sel = tr_idx[stratified_subsample(y[tr_idx], frac, rng)]
-                clf = factory()
-                clf.fit(X[sel], y[sel])
-                pred = clf.predict(X[te])
-                a_s.append(accuracy_score(y[te], pred))
-                f_s.append(f1_score(y[te], pred, average="macro", zero_division=0))
-                k_s.append(cohen_kappa_score(y[te], pred))
-            fold_acc.append(np.mean(a_s))
-            fold_f1.append(np.mean(f_s))
-            fold_kap.append(np.mean(k_s))
-        a, f, kp = np.array(fold_acc), np.array(fold_f1), np.array(fold_kap)
+        fa, ff, fk = [], [], []
+        for _fi, vals in bucket[frac].items():
+            arr = np.array(vals)  # (n_seeds, 3), seed-averaged per fold
+            fa.append(arr[:, 0].mean()); ff.append(arr[:, 1].mean()); fk.append(arr[:, 2].mean())
+        a, f, kp = np.array(fa), np.array(ff), np.array(fk)
         out[frac] = {
-            "folds": len(fold_acc),
-            "n_labels_full": None,  # filled by caller
-            "acc_mean": a.mean() * 100, "acc_std": a.std() * 100,
-            "f1_mean": f.mean() * 100, "f1_std": f.std() * 100,
+            "folds": len(fa),
+            "acc_mean": a.mean(), "acc_std": a.std(),
+            "f1_mean": f.mean(), "f1_std": f.std(),
             "kappa_mean": kp.mean(), "kappa_std": kp.std(),
         }
     return out
@@ -108,6 +141,8 @@ def main() -> None:
                     default=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0])
     ap.add_argument("--subsample_seeds", type=int, default=3,
                     help="subsample draws averaged per fold at frac<1 (denoise)")
+    ap.add_argument("--n_jobs", type=int, default=-1, help="parallel classifier fits (-1=all cores)")
+    ap.add_argument("--batch_size", type=int, default=16, help="recordings per encode batch")
     ap.add_argument("--out_dir", default="results/phase3/f13")
     args = ap.parse_args()
 
@@ -123,9 +158,9 @@ def main() -> None:
     if args.raw:
         feature_sets["raw_de"] = extract_raw_features(trials, labels)
     if args.pc_dir:
-        feature_sets["physiofm_pc"] = extract_model_features(Path(args.pc_dir), trials, labels, device)
+        feature_sets["physiofm_pc"] = extract_model_features(Path(args.pc_dir), trials, labels, device, args.batch_size)
     if args.rand_dir:
-        feature_sets["physiofm_rand"] = extract_model_features(Path(args.rand_dir), trials, labels, device)
+        feature_sets["physiofm_rand"] = extract_model_features(Path(args.rand_dir), trials, labels, device, args.batch_size)
     if not feature_sets:
         raise SystemExit("nothing to evaluate: pass --raw and/or --pc_dir/--rand_dir")
 
@@ -134,7 +169,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for name, (X, subj, y) in feature_sets.items():
-        res = curve_eval(X, subj, y, args.k, args.classifier, fracs, args.subsample_seeds)
+        res = curve_eval(X, subj, y, args.k, args.classifier, fracs, args.subsample_seeds, args.n_jobs)
         for frac in fracs:
             r = res[frac]
             LOG.info("RESULT %-14s frac=%-5.2f acc=%.2f±%.2f f1=%.2f±%.2f kappa=%.3f±%.3f (%d folds)",
