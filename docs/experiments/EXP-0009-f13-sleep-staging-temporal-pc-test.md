@@ -128,6 +128,26 @@ Chance = 20% (5 classes: W/N1/N2/N3/REM).
 **pc − raw_de = +4.77 pts / +0.060 κ** (FM now *beats* the raw-DE ceiling — see §5).
 Results: `results/phase3/f13/f13_sleep.csv`.
 
+### 4c. Label-efficiency curve *(run date: 2026-07-11)*
+
+Frozen encoders; the classifier trains on a stratified fraction of each fold's
+training epochs, tested on the full fold (subject-disjoint, seed-averaged at
+frac<1). Accuracy %; `results/phase3/f13/f13_label_curves.csv`.
+
+| labels | physiofm_pc | raw_de | physiofm_rand | pc − rand |
+| ---: | ---: | ---: | ---: | ---: |
+| 1%  | **70.9** | 67.0 | 58.2 | **+12.7** |
+| 5%  | 72.5 | 67.8 | 60.8 | +11.8 |
+| 10% | 72.6 | 67.7 | 61.9 | +10.8 |
+| 25% | 72.8 | 67.9 | 62.5 | +10.2 |
+| 50% | 72.7 | 67.9 | 62.8 | +9.9 |
+| 100%| 72.6 | 67.9 | 62.9 | +9.8 |
+
+The pretraining gain **widens as labels shrink** (+9.8 → +12.7 at 1%), and
+**PC-FM at 1% labels (70.9%) beats both raw-DE and random-init at 100% labels**
+(67.9 / 62.9) — pretraining is worth ~100× the labeled data. PC-FM is nearly flat
+(−1.7 pts from 100%→1%) while random-init falls hardest (−4.7).
+
 ### 4b. Preliminary — partial corpus *(run date: 2026-07-06, superseded)*
 
 Partial corpus (18 recordings, **9 subjects**, 18.8k epochs; 30-epoch pretrain).
@@ -162,11 +182,15 @@ model here, beating both the random-init control and the linear ceiling.
 **This is the keystone positive result** the Option-A framing rests on: a genuine
 foundation-model win on a dynamic task, opposite the static-emotion null.
 
-**Caveats for the paper:** (1) single seed — repeat over ≥3 seeds. (2) The pc−rand
-gap is unambiguous, but the pc−raw margin (~4.8 pts, ~2.5 std) should get a *paired*
-per-fold significance test (folds are matched) before being cited as a peak win.
-(3) The still-expected **label-efficiency** advantage (F7-analog on sleep) is
-unmeasured and should be the headline curve — the FM should win by more at low labels.
+**Label-efficiency confirmed (§4c):** the F7-analog curve shows the pretraining
+gain *widening* at low labels (+9.8→+12.7) and PC-FM at 1% labels beating both
+baselines at 100% — the expected headline SSL result, now measured.
+
+**Caveats for the paper:** (1) single seed for the headline table — a 3-seed repeat
+is running (`run_f13_multiseed.sh`) to confirm the ordering isn't seed-luck.
+(2) The pc−rand gap is unambiguous, but the pc−raw peak margin (~4.8 pts, ~2.5 std)
+gets a *paired* per-fold test (folds matched) in the multi-seed summary before being
+cited as a peak win.
 
 ---
 

@@ -96,9 +96,10 @@ This makes the emotion null a **feature** (rigorous "when/why it works"), not a 
 
 ## 7. Concrete next experiments
 
-- **F13 definitive** — rebuild on the full Sleep-EDF corpus (user uploading), re-run.
-- **Sleep label-efficiency curve** (F7-analog): pc vs rand vs raw at 10/50/100% labels — the
-  Option-A headline. *Runnable now on the partial corpus for a preview.*
+- **F13 definitive** — ✅ done (78 subj, full corpus): pc 72.6 > raw 67.9 > rand 62.9.
+- **Sleep label-efficiency curve** (F7-analog) — ✅ done ([[EXP-0009]] §4c): pc−rand gain
+  widens +9.8→+12.7 as labels drop to 1%; pc@1% beats both baselines @100%. The headline.
+- **Multi-seed (3) + paired test** — in progress (`run_f13_multiseed.sh`).
 - **+1 dynamic task** (seizure or MI) for the "multi-task" claim (data-blocked).
 - **Multi-task joint pretraining** (channel-agnostic) once ≥2 tasks' DE are on disk.
 - **(Optional) raw-EEG leg** (F15) if the DE bottleneck caps the dynamic tasks too.
