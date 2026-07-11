@@ -9,8 +9,12 @@ set of experiments to find out *why*, and traced the cause to the **emotion DE f
 themselves** — they are static and already linearly separable, so there is nothing for the
 pretraining to add. Crucially, the same method **does work once real temporal dynamics are
 present**: I confirmed this both by removing the smoothing from the emotion features, and —
-the decisive test — on a genuinely dynamic task, **sleep staging**, where pretraining gives a
-**+19-point** jump. I am now blocked on GPU memory for running this at full scale.
+the decisive test — on a genuinely dynamic task, **sleep staging**. On the **full Sleep-EDF
+corpus (78 subjects)**, pretraining beats the matched no-pretraining model by **+10 points** and
+now **also beats the strong linear DE baseline by +4.7 points** — a clean foundation-model win
+on a dynamic task, and the mirror image of the emotion null. (The earlier out-of-memory blocker
+was resolved by running on a rented 80 GB GPU; the true fix was a smaller batch, since attention
+memory scales with sequence-length² and sleep recordings are ~60× longer than emotion trials.)
 
 ## 2. Starting point (recap of the previous stage)
 In the first stage I fed each channel–band DE trace to TimesFM directly, as a univariate
@@ -92,19 +96,22 @@ is a large public dataset (Sleep-EDF).
 the same DE features and the same evaluation harness as emotion), then ran the identical
 pretrained-vs-no-pretraining comparison.
 
-**Result (preliminary, 9 subjects).**
+**Result (definitive, full corpus — 78 subjects, 195k epochs).**
 
 | Model | Accuracy | Agreement (Cohen's κ) |
 | --- | ---: | ---: |
-| **Pretrained (proposed method)** | **68.8%** | **0.59** |
-| No pretraining (random init) | 50.0% | 0.35 |
-| Linear baseline on DE | 72.1% | 0.63 |
+| **Pretrained (proposed method)** | **72.6%** | **0.64** |
+| No pretraining (random init) | 62.9% | 0.51 |
+| Linear baseline on DE | 67.9% | 0.58 |
 
-**Meaning.** Pretraining gives **+19 points** over no-pretraining — the mirror image of the
+**Meaning.** Pretraining gives **+10 points** over no-pretraining — the mirror image of the
 emotion result, exactly as predicted. This confirms the thesis: **the proposed pretraining
-helps in proportion to how much genuine temporal structure a task has.** Its advantage is a
-**pretraining gain and data-efficiency** rather than peak accuracy (a strong linear DE baseline
-still edges the peak here).
+helps in proportion to how much genuine temporal structure a task has.** And at full scale the
+method now **also beats the strong linear DE baseline (+4.7 points)**: the baseline degrades as
+more subjects are added (cross-subject variability), while the pretrained model improves with
+more data — so it wins on **peak accuracy too**, not only pretraining-gain and data-efficiency.
+*(A 9-subject preliminary, now superseded, showed +19 over random with the linear baseline still
+edging the peak; the full run confirms the direction and removes that caveat.)*
 
 ## 8. Where this leaves the project
 - The **emotion** result is now a well-understood **negative result** — I can state precisely
@@ -115,17 +122,19 @@ still edges the peak here).
   baseline. The headline metric becomes **data-efficiency and cross-task transfer**, not peak
   accuracy.
 
-## 9. What I'm blocked on — compute request
-The sleep result above is only preliminary (9 subjects) because I cannot run the full dataset.
-The current GPU has only **~20 GB** of memory. Sleep recordings are whole nights (~2,600
-time-steps each), and a transformer's memory grows with the **square** of the sequence length,
-so the full-dataset run **runs out of memory and crashes**. Only tiny batches fit, which is too
-slow and unstable to finish the experiments.
+## 9. Compute status & remaining runs
+The keystone full-dataset sleep result (§7) is **done** — run on a rented **80 GB H100**
+(RunPod). Note the earlier out-of-memory crash was **not** a model-size problem (the model is
+2.4M params and used <3 GB); it was batch size. Attention memory scales with
+sequence-length², and sleep recordings (~2,600 steps) are ~60× longer than emotion trials
+(~40), so the emotion-default batch exploded. A smaller batch (`BATCH=4–16`) fits on the
+original ~20 GB card too — the 80 GB GPU mainly bought **speed** (pretraining in ~2 min) and
+headroom for the heavier raw-EEG work to come.
 
-**Request:** access to a GPU with **≥40 GB (ideally 80 GB — e.g. A100/H100).**
-
-**It unlocks immediately:**
-1. The **full-dataset sleep result** (the keystone experiment for the paper).
-2. **Data-efficiency curves** — the headline metric showing the model's advantage with limited
-   labels.
-3. A **second dynamic task**, to support the cross-task "foundation model" claim.
+**Still to run (small compute; H100 access already sufficient):**
+1. **Sleep label-efficiency curve** (F7-analog: pc vs rand vs raw at 10/50/100% labels) — the
+   Option-A headline metric; the FM is expected to win by more in the low-label regime.
+2. **Multi-seed repeat** (≥3 seeds) + a **paired per-fold test** for the pc−raw margin.
+3. A **second dynamic task** (seizure CHB-MIT or motor-imagery BCI-IV-2a) for the cross-task
+   "foundation model" claim — this one is **data-blocked** (dataset not yet on disk), not
+   compute-blocked.

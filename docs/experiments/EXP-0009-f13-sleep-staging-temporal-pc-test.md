@@ -1,15 +1,15 @@
 ---
 id: EXP-0009
 title: F13 — Pre-registered temporal-PC test on sleep staging (Sleep-EDF)
-status: running
+status: done
 created: 2026-06-28
-run_date: 2026-07-06
+run_date: 2026-07-11
 agent: claude-code
 phase: phase3-handoff
 verified: no
-tags: sleep-edf, phase3, temporal-pc, pre-registered, data-blocked
+tags: sleep-edf, phase3, temporal-pc, pre-registered
 commits:
-verdict: PRELIMINARY CONFIRMED — on sleep (9-subj partial corpus) PC-pretrained beats matched random-init by ~+19 pts / +0.24 kappa (68.8% vs 50.0%), the mirror image of the emotion null. PC pretraining has real value where temporal dynamics exist. Caveat: raw-DE linear still edges the FM at full labels, so the win is pretraining-gain + label-efficiency, not peak. Definitive run pending full-corpus upload.
+verdict: CONFIRMED (full corpus, 78 subj / 195k epochs). PC-pretrained beats matched random-init by +9.8 pts / +0.13 kappa (72.6% vs 62.9%) AND now beats the raw-DE linear ceiling by +4.8 pts (67.9%) — reversing the preliminary's peak-accuracy caveat. The mirror image of the emotion null and the keystone positive result. Caveats: single seed; the pc-raw margin (~4.8 pts, ~2.5 std) wants a paired per-fold test.
 ---
 
 # EXP-0009 — F13 — Pre-registered temporal-PC test on sleep staging (Sleep-EDF)
@@ -100,14 +100,37 @@ data, low channel count).
   early directional read of the pre-registered signal (PC vs random on a dynamic
   task); the **definitive** run rebuilds on the full ~153-pair corpus once the
   download finishes.
+- 2026-07-11 — **DEFINITIVE run, full corpus.** Full Sleep-EDF Cassette DE archive
+  (153 recordings, **78 subjects**, 195,469 epochs) built locally, transferred to a
+  rented RunPod **H100 80GB** pod (the 20GB local GPU OOM'd on whole-night sequences —
+  cause was `batch × length²` attention at the emotion default batch, not model size;
+  `BATCH=16` uses <3GB). Matched PC (60 epochs, best PC-MSE 0.229) vs random-init
+  (`--epochs 0`), evaluated logreg under subject-disjoint 5-fold via
+  `phase2_f13_sleep.py --classifiers logreg`. Results below.
 
 ---
 
-## 4. Results  *(PRELIMINARY — run date: 2026-07-06)*
+## 4. Results
 
-**Preliminary** run on the partial corpus available so far (18 recordings, **9
-subjects**, 18.8k epochs; 30-epoch pretrain). Subject-disjoint 5-fold; acc % / κ.
-The **definitive** run rebuilds on the full ~153-pair corpus (user uploading).
+### 4a. DEFINITIVE — full corpus *(run date: 2026-07-11)*
+
+Full Sleep-EDF Cassette: **153 recordings, 78 subjects, 195,469 epochs**.
+Subject-disjoint 5-fold, logreg; acc % / macro-F1 % / κ (mean ± std over folds).
+Chance = 20% (5 classes: W/N1/N2/N3/REM).
+
+| Features | acc | macro-F1 | κ |
+| --- | ---: | ---: | ---: |
+| **physiofm_pc** (PC-pretrained) | **72.63 ± 2.85** | **67.57** | **0.635** |
+| raw_de (linear ceiling) | 67.86 ± 2.30 | 61.88 | 0.575 |
+| **physiofm_rand** (random-init) | 62.88 ± 2.43 | 56.06 | 0.509 |
+
+**pc − rand = +9.75 pts / +0.126 κ** (pre-registered prediction confirmed).
+**pc − raw_de = +4.77 pts / +0.060 κ** (FM now *beats* the raw-DE ceiling — see §5).
+Results: `results/phase3/f13/f13_sleep.csv`.
+
+### 4b. Preliminary — partial corpus *(run date: 2026-07-06, superseded)*
+
+Partial corpus (18 recordings, **9 subjects**, 18.8k epochs; 30-epoch pretrain).
 
 | Features | logreg acc / κ | mlp_bal acc / κ |
 | --- | ---: | ---: |
@@ -115,30 +138,35 @@ The **definitive** run rebuilds on the full ~153-pair corpus (user uploading).
 | **physiofm_pc** | **68.79 ± 3.19 / 0.588** | 66.09 / 0.548 |
 | **physiofm_rand** | **50.01 ± 7.00 / 0.350** | 52.65 / 0.350 |
 
-Results: `results/phase3/f13/f13_sleep.csv`. Chance = 20% (5 classes).
-
 ---
 
-## 5. Interpretation — agent's reading *(preliminary)*
+## 5. Interpretation — agent's reading *(definitive, full corpus)*
 
-**The pre-registered prediction is confirmed on the preliminary corpus.**
-`physiofm_pc` (68.8% / κ 0.588) beats matched `physiofm_rand` (50.0% / κ 0.350) by
-**~+19 pts / +0.24 κ**. This is the mirror image of emotion (EXP-0001/0011), where PC
-≈ random. So the proposal's temporal-PC pretraining objective carries **real,
-large value on a genuinely dynamic biosignal task** — supporting the thesis that
-*PC pretraining helps in proportion to a task's temporal dynamics*.
+**The pre-registered prediction is confirmed at full scale, and more strongly than
+the preliminary suggested.** On 78 subjects, `physiofm_pc` (72.6% / κ 0.635) beats
+matched `physiofm_rand` (62.9% / κ 0.509) by **+9.8 pts / +0.13 κ**. This is the
+mirror image of emotion (EXP-0001/0011), where PC ≈ random — confirming the thesis
+that *PC pretraining helps in proportion to a task's temporal dynamics*. The gap is
+smaller than the preliminary's +19 because random-init rose from a noisy 50.0
+(9 subj) to a reliable 62.9 (78 subj); the +9.8 across 78 subjects is the trustworthy
+number.
 
-**Caveat (important for framing).** raw-DE logreg (72.1%) still edges out the FM
-encoder (68.8%) at full labels — DE + linear is strong on sleep too, so the FM does
-**not** win on full-label peak accuracy. The FM's value here is (a) the pretraining
-gain over random (+19), and (b) the expected **label-efficiency** advantage in
-low-data (to be measured directly, F7-analog). This is consistent with the SSL
-literature (gains concentrate in low-label regimes) and is the metric Option A
-should headline — not peak accuracy.
+**The preliminary's main caveat is now reversed — the FM beats the raw-DE ceiling on
+peak accuracy.** At 9 subjects raw-DE (72.1) *edged* the FM (68.8), so the win was
+"pretraining-gain, not peak." At full scale that flips: `physiofm_pc` (72.6)
+**exceeds** raw-DE (67.9) by **+4.8 pts / +0.06 κ**. Raw-DE *degraded* with more
+subjects (67.9 vs 72.1 — cross-subject DE distribution shift), while the FM *improved*
+(72.6 vs 68.8 — more pretraining data). So the PC-pretrained FM is the single best
+model here, beating both the random-init control and the linear ceiling.
 
-**Preliminary caveats:** only 9 subjects / partial corpus / 30-epoch pretrain; the
-definitive full-corpus run may shift absolute numbers (the PC≫random *direction* is
-expected to hold and likely strengthen with more data). Also single-seed.
+**This is the keystone positive result** the Option-A framing rests on: a genuine
+foundation-model win on a dynamic task, opposite the static-emotion null.
+
+**Caveats for the paper:** (1) single seed — repeat over ≥3 seeds. (2) The pc−rand
+gap is unambiguous, but the pc−raw margin (~4.8 pts, ~2.5 std) should get a *paired*
+per-fold significance test (folds are matched) before being cited as a peak win.
+(3) The still-expected **label-efficiency** advantage (F7-analog on sleep) is
+unmeasured and should be the headline curve — the FM should win by more at low labels.
 
 ---
 

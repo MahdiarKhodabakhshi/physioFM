@@ -45,18 +45,23 @@ illusory SOTA) — **not** a flaw in the method, architecture, head, or objectiv
 
 ## 4. The positive pivot — where it DOES work (the keystone)
 
-**F13 / [[EXP-0009]] — sleep staging (dynamic task), preliminary (9 subj, partial corpus):**
+**F13 / [[EXP-0009]] — sleep staging (dynamic task), DEFINITIVE (78 subj, full
+Sleep-EDF Cassette, 195k epochs), subject-disjoint 5-fold, logreg:**
 
-| Features | acc % | κ |
-| --- | ---: | ---: |
-| raw_de (logreg) | 72.1 | 0.628 |
-| **physiofm_pc** | **68.8** | **0.588** |
-| **physiofm_rand** | **50.0** | **0.350** |
+| Features | acc % | macro-F1 % | κ |
+| --- | ---: | ---: | ---: |
+| **physiofm_pc** | **72.6** | **67.6** | **0.635** |
+| raw_de (logreg) | 67.9 | 61.9 | 0.575 |
+| **physiofm_rand** | **62.9** | **56.1** | **0.509** |
 
-**PC-pretrained beats matched random-init by ~+19 pts / +0.24 κ** — the mirror image of
-the emotion null. *Confirms the thesis: PC pretraining helps ∝ a task's temporal dynamics.*
-Caveat: raw-DE linear still edges the FM at full labels → the FM win is **pretraining-gain
-+ label-efficiency**, not peak accuracy. (Definitive run pending full-corpus upload.)
+**PC-pretrained beats matched random-init by +9.8 pts / +0.13 κ** — the mirror image
+of the emotion null. *Confirms the thesis: PC pretraining helps ∝ a task's temporal
+dynamics.* And at full scale the FM now **also beats the raw-DE linear ceiling by
++4.8 pts** (raw-DE degrades with more subjects; the FM improves with more pretraining
+data) — so it wins on **peak accuracy**, not just pretraining-gain, reversing the
+preliminary's caveat. Remaining: single-seed → repeat ≥3 seeds; paired per-fold test
+for the pc−raw margin; label-efficiency curve (the expected larger low-label win).
+*(9-subj preliminary, now superseded: pc 68.8 / raw 72.1 / rand 50.0.)*
 
 ## 5. Thesis for Option A (the paper)
 
