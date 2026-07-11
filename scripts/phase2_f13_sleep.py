@@ -18,8 +18,14 @@ from __future__ import annotations
 import argparse
 import csv
 import logging
+import os
 import sys
 from pathlib import Path
+
+# Ops: pin BLAS to 1 thread/process so the joblib fold fan-out doesn't oversubscribe.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 import numpy as np
 
@@ -96,27 +102,38 @@ def extract_raw_features(trials, labels):
     return np.concatenate(X), np.concatenate(subj), np.concatenate(y)
 
 
-def subject_kfold_eval(X, subj, y, k, classifier):
-    """Subject-disjoint k-fold; mean±std of acc / macro-F1 / Cohen kappa (%)."""
+def _kfold_fit_one(X, y, subj, test_subj, classifier):
+    """One held-out-subject fold — module-level so joblib memmaps X/y once."""
     from sklearn.metrics import accuracy_score, cohen_kappa_score, f1_score
+
+    te = np.isin(subj, test_subj)
+    tr = ~te
+    if tr.sum() == 0 or te.sum() == 0:
+        return None
+    clf = CLASSIFIERS[classifier]()
+    clf.fit(X[tr], y[tr])
+    pred = clf.predict(X[te])
+    return (accuracy_score(y[te], pred),
+            f1_score(y[te], pred, average="macro", zero_division=0),
+            cohen_kappa_score(y[te], pred))
+
+
+def subject_kfold_eval(X, subj, y, k, classifier, n_jobs=-1):
+    """Subject-disjoint k-fold; mean±std of acc / macro-F1 / Cohen kappa (%).
+    Folds are independent -> fan out across cores (results identical to serial)."""
+    from joblib import Parallel, delayed
 
     subjects = np.array(sorted(set(subj.tolist())))
     rng = np.random.default_rng(42)
     folds = np.array_split(rng.permutation(subjects), k)
-    factory = CLASSIFIERS[classifier]
 
-    accs, f1s, kaps = [], [], []
-    for fi, test_subj in enumerate(folds):
-        te = np.isin(subj, test_subj)
-        tr = ~te
-        if tr.sum() == 0 or te.sum() == 0:
-            continue
-        clf = factory()
-        clf.fit(X[tr], y[tr])
-        pred = clf.predict(X[te])
-        accs.append(accuracy_score(y[te], pred))
-        f1s.append(f1_score(y[te], pred, average="macro", zero_division=0))
-        kaps.append(cohen_kappa_score(y[te], pred))
+    res = Parallel(n_jobs=n_jobs, max_nbytes="1M")(
+        delayed(_kfold_fit_one)(X, y, subj, ts, classifier) for ts in folds
+    )
+    res = [r for r in res if r is not None]
+    accs = [r[0] for r in res]
+    f1s = [r[1] for r in res]
+    kaps = [r[2] for r in res]
     a, f, kp = np.array(accs), np.array(f1s), np.array(kaps)
     return {
         "runs": len(accs),
@@ -139,6 +156,7 @@ def main() -> None:
     ap.add_argument("--out_dir", default="results/phase3/f13")
     ap.add_argument("--tag", default="", help="suffix for output files (e.g. _seed1)")
     ap.add_argument("--batch_size", type=int, default=16, help="recordings per encode batch")
+    ap.add_argument("--n_jobs", type=int, default=-1, help="parallel fold fits (-1=all cores)")
     ap.add_argument("--self_check", action="store_true",
                     help="verify batched==unbatched extraction on a few recordings, then exit")
     args = ap.parse_args()
@@ -177,7 +195,7 @@ def main() -> None:
     rows = []
     for name, (X, subj, y) in feature_sets.items():
         for clf in args.classifiers:
-            r = subject_kfold_eval(X, subj, y, args.k, clf)
+            r = subject_kfold_eval(X, subj, y, args.k, clf, args.n_jobs)
             LOG.info("RESULT %-14s %-8s acc=%.2f±%.2f f1=%.2f±%.2f kappa=%.3f±%.3f (%d folds)",
                      name, clf, r["acc_mean"], r["acc_std"], r["f1_mean"], r["f1_std"],
                      r["kappa_mean"], r["kappa_std"], r["runs"])
