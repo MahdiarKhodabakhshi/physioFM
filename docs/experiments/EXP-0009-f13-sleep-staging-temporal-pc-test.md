@@ -9,7 +9,7 @@ phase: phase3-handoff
 verified: no
 tags: sleep-edf, phase3, temporal-pc, pre-registered
 commits:
-verdict: CONFIRMED (full corpus, 78 subj / 195k epochs). PC-pretrained beats matched random-init by +9.8 pts / +0.13 kappa (72.6% vs 62.9%) AND now beats the raw-DE linear ceiling by +4.8 pts (67.9%) — reversing the preliminary's peak-accuracy caveat. The mirror image of the emotion null and the keystone positive result. Caveats: single seed; the pc-raw margin (~4.8 pts, ~2.5 std) wants a paired per-fold test.
+verdict: CONFIRMED (full corpus, 78 subj / 195k epochs; 3-seed). PC-pretrained beats matched random-init (+14.5 pts, p<1e-4, 5/5 folds) AND the raw-DE linear ceiling (+5.2 pts, paired-t p=0.0008, 5/5 folds); pc is seed-stable at 73.0±0.4. Label-efficiency curve: the pc−rand gain widens to +12.7 at 1% labels and pc@1% beats both baselines @100% (~100× label efficiency). The mirror image of the emotion null and the keystone positive result. Remaining: order-shuffle temporal control; a 2nd dynamic task (data-blocked).
 ---
 
 # EXP-0009 — F13 — Pre-registered temporal-PC test on sleep staging (Sleep-EDF)
@@ -148,6 +148,26 @@ The pretraining gain **widens as labels shrink** (+9.8 → +12.7 at 1%), and
 (67.9 / 62.9) — pretraining is worth ~100× the labeled data. PC-FM is nearly flat
 (−1.7 pts from 100%→1%) while random-init falls hardest (−4.7).
 
+### 4d. Multi-seed robustness + paired tests *(run date: 2026-07-11)*
+
+Seeds 1/2/3 (fresh PC + matched random-init each), subject-disjoint 5-fold, logreg
+(`results/phase3/f13/multiseed/`). Accuracy % mean ± std across seeds:
+
+| Feature | acc (mean ± std over seeds) |
+| --- | ---: |
+| physiofm_pc | **73.03 ± 0.38** |
+| raw_de | 67.86 ± 0.00 (deterministic) |
+| physiofm_rand | 58.51 ± 1.05 |
+
+Paired per-fold tests (seed-averaged, matched folds):
+- **pc vs raw_de: +5.17 pts, paired-t p=0.0008, wins 5/5 folds** → the peak-accuracy
+  win is significant, not seed-luck. (Wilcoxon p=0.0625 is the *floor* for n=5, so the
+  5/5 sweep + paired-t is the informative test.)
+- **pc vs rand: +14.52 pts, paired-t p<0.0001, wins 5/5 folds.**
+
+PC-FM is seed-stable (±0.38); random-init varies more (±1.05, as expected for a random
+encoder) but is always far below. The seed-42 headline (§4a) sits inside this band.
+
 ### 4b. Preliminary — partial corpus *(run date: 2026-07-06, superseded)*
 
 Partial corpus (18 recordings, **9 subjects**, 18.8k epochs; 30-epoch pretrain).
@@ -186,11 +206,14 @@ foundation-model win on a dynamic task, opposite the static-emotion null.
 gain *widening* at low labels (+9.8→+12.7) and PC-FM at 1% labels beating both
 baselines at 100% — the expected headline SSL result, now measured.
 
-**Caveats for the paper:** (1) single seed for the headline table — a 3-seed repeat
-is running (`run_f13_multiseed.sh`) to confirm the ordering isn't seed-luck.
-(2) The pc−rand gap is unambiguous, but the pc−raw peak margin (~4.8 pts, ~2.5 std)
-gets a *paired* per-fold test (folds matched) in the multi-seed summary before being
-cited as a peak win.
+**Robustness confirmed (§4d):** 3-seed repeat gives pc 73.03 ± 0.38 (seed-stable),
+and paired per-fold tests make both wins significant — pc > raw_de (+5.2, p=0.0008,
+5/5 folds) and pc > rand (+14.5, p<0.0001, 5/5 folds). The single-seed headline is not
+seed-luck, and the peak-accuracy win over raw-DE is statistically sound.
+
+**Remaining:** (1) an order-shuffle temporal control (pre-registered §1) to show the
+gain is specifically *temporal*. (2) A second dynamic task for the cross-task claim
+(data-blocked).
 
 ---
 
