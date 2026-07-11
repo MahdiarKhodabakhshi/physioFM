@@ -17,7 +17,11 @@ env/
 .vscode/
 .idea/
 .DS_Store
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/experiment-log/
+.codex/
 
 # Private/scratch notes
 previous_chat.md
@@ -29,6 +33,7 @@ scripts/extract_notebook.py
 data/
 datasets/
 SEED IV/
+physionet.org/
 *.zip
 *.tar
 *.tar.gz
@@ -63,3 +68,8 @@ timesfm/
 
 # Local reference material
 URE/
+insights-report.html
+2026-*-ide*.txt
+
+graphify-out/
+
