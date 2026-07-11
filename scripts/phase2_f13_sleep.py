@@ -54,13 +54,19 @@ def _load_recordings():
     return trials, labels
 
 
-def extract_model_features(model_dir: Path, trials, labels, device, batch_size: int = 16):
+def extract_model_features(model_dir: Path, trials, labels, device, batch_size: int = 16,
+                           shuffle_time: bool = False, shuffle_seed: int = 0):
     """Per-epoch frozen-encoder features. Returns X (N,d), subject (N,), y (N,).
 
     Batched with length-bucketing for GPU throughput: recordings are sorted by
     length and padded within a batch. Causal attention + the right-pad mask make
     the valid-position features identical to one-at-a-time encoding (verified in
     `--self_check`), so batching is a pure speedup, not an approximation.
+
+    ``shuffle_time`` (pre-registered order control): permute each recording's epochs
+    BEFORE encoding so the causal transformer's temporal context is scrambled, then
+    inverse-permute the features back so they still align with the true labels. If the
+    PC advantage is temporal, shuffled PC should collapse toward random-init.
     """
     import torch
 
@@ -68,8 +74,16 @@ def extract_model_features(model_dir: Path, trials, labels, device, batch_size: 
     model.eval()
     mean, std = load_standardizer(model_dir / "standardizer.npz")
     p_in = margs["p_in"]
+    if shuffle_time and p_in != 1:
+        raise SystemExit("--shuffle_time assumes p_in=1 (per-epoch alignment)")
 
     seqs = [standardize(t.values, mean, std) for t in trials]  # (T, n_cb) each
+    perms = None
+    if shuffle_time:
+        rng = np.random.default_rng(shuffle_seed)
+        perms = [rng.permutation(s.shape[0]) for s in seqs]
+        seqs = [s[perms[i]] for i, s in enumerate(seqs)]
+
     order = sorted(range(len(seqs)), key=lambda i: seqs[i].shape[0])  # length buckets
     feats: list = [None] * len(seqs)
     with torch.no_grad():
@@ -83,6 +97,10 @@ def extract_model_features(model_dir: Path, trials, labels, device, batch_size: 
                 p = t // p_in
                 hi = h[j, :p]
                 feats[i] = hi if p_in == 1 else np.repeat(hi, p_in, axis=0)[:t]
+
+    if shuffle_time:  # undo the permutation so features re-align with true labels
+        for i in range(len(feats)):
+            feats[i] = feats[i][np.argsort(perms[i])]
 
     X, subj, y = [], [], []
     for i, (t, lab) in enumerate(zip(trials, labels)):
@@ -157,6 +175,9 @@ def main() -> None:
     ap.add_argument("--tag", default="", help="suffix for output files (e.g. _seed1)")
     ap.add_argument("--batch_size", type=int, default=16, help="recordings per encode batch")
     ap.add_argument("--n_jobs", type=int, default=-1, help="parallel fold fits (-1=all cores)")
+    ap.add_argument("--shuffle_time", action="store_true",
+                    help="pre-registered order control: scramble epoch order before encoding")
+    ap.add_argument("--shuffle_seed", type=int, default=0)
     ap.add_argument("--self_check", action="store_true",
                     help="verify batched==unbatched extraction on a few recordings, then exit")
     args = ap.parse_args()
@@ -184,9 +205,13 @@ def main() -> None:
     if args.raw:
         feature_sets["raw_de"] = extract_raw_features(trials, labels)
     if args.pc_dir:
-        feature_sets["physiofm_pc"] = extract_model_features(Path(args.pc_dir), trials, labels, device, args.batch_size)
+        feature_sets["physiofm_pc"] = extract_model_features(
+            Path(args.pc_dir), trials, labels, device, args.batch_size,
+            args.shuffle_time, args.shuffle_seed)
     if args.rand_dir:
-        feature_sets["physiofm_rand"] = extract_model_features(Path(args.rand_dir), trials, labels, device, args.batch_size)
+        feature_sets["physiofm_rand"] = extract_model_features(
+            Path(args.rand_dir), trials, labels, device, args.batch_size,
+            args.shuffle_time, args.shuffle_seed)
     if not feature_sets:
         raise SystemExit("nothing to evaluate: pass --raw and/or --pc_dir/--rand_dir")
 
