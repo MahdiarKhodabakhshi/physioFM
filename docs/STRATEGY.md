@@ -59,9 +59,13 @@ of the emotion null. *Confirms the thesis: PC pretraining helps ∝ a task's tem
 dynamics.* And at full scale the FM now **also beats the raw-DE linear ceiling by
 +4.8 pts** (raw-DE degrades with more subjects; the FM improves with more pretraining
 data) — so it wins on **peak accuracy**, not just pretraining-gain, reversing the
-preliminary's caveat. Remaining: single-seed → repeat ≥3 seeds; paired per-fold test
-for the pc−raw margin; label-efficiency curve (the expected larger low-label win).
-*(9-subj preliminary, now superseded: pc 68.8 / raw 72.1 / rand 50.0.)*
+preliminary's caveat.
+
+Confirmed by three follow-ups ([[EXP-0009]] §4c–§4e): **3-seed** repeat (pc 73.0±0.4;
+paired-t pc>raw p=0.0008, pc>rand p<1e-4, 5/5 folds each); **label-efficiency** (pc−rand
+gain widens +9.8→+12.7 at 1% labels; pc@1% beats both baselines @100%); and an
+**order-shuffle control** (scrambling epoch order drops pc to the raw-DE level → the FM's
+whole edge is temporal). *(9-subj preliminary, superseded: pc 68.8 / raw 72.1 / rand 50.0.)*
 
 ## 5. Thesis for Option A (the paper)
 

@@ -9,7 +9,7 @@ phase: phase3-handoff
 verified: no
 tags: sleep-edf, phase3, temporal-pc, pre-registered
 commits:
-verdict: CONFIRMED (full corpus, 78 subj / 195k epochs; 3-seed). PC-pretrained beats matched random-init (+14.5 pts, p<1e-4, 5/5 folds) AND the raw-DE linear ceiling (+5.2 pts, paired-t p=0.0008, 5/5 folds); pc is seed-stable at 73.0±0.4. Label-efficiency curve: the pc−rand gain widens to +12.7 at 1% labels and pc@1% beats both baselines @100% (~100× label efficiency). The mirror image of the emotion null and the keystone positive result. Remaining: order-shuffle temporal control; a 2nd dynamic task (data-blocked).
+verdict: CONFIRMED (full corpus, 78 subj / 195k epochs; 3-seed). PC-pretrained beats matched random-init (+14.5 pts, p<1e-4, 5/5 folds) AND the raw-DE linear ceiling (+5.2 pts, paired-t p=0.0008, 5/5 folds); pc is seed-stable at 73.0±0.4. Label-efficiency curve: the pc−rand gain widens to +12.7 at 1% labels and pc@1% beats both baselines @100% (~100× label efficiency). Order-shuffle control: scrambling epoch order drops pc to the raw-DE level, so the FM's whole edge is temporal. The mirror image of the emotion null and the keystone positive result. Remaining: a 2nd dynamic task (data-blocked).
 ---
 
 # EXP-0009 — F13 — Pre-registered temporal-PC test on sleep staging (Sleep-EDF)
@@ -168,6 +168,25 @@ Paired per-fold tests (seed-averaged, matched folds):
 PC-FM is seed-stable (±0.38); random-init varies more (±1.05, as expected for a random
 encoder) but is always far below. The seed-42 headline (§4a) sits inside this band.
 
+### 4e. Order-shuffle temporal control *(run date: 2026-07-11)*
+
+Pre-registered (§1). Each recording's epochs are permuted BEFORE encoding (scrambling
+the causal transformer's temporal context), then features are inverse-permuted to keep
+label alignment. `results/phase3/f13/f13_sleep_shuffle.csv`. Accuracy %:
+
+| Feature | normal | shuffled | Δ |
+| --- | ---: | ---: | ---: |
+| physiofm_pc | 72.6 | **67.4** | **−5.2** |
+| physiofm_rand | 62.9 | 61.2 | −1.7 |
+| raw_de | 67.9 | 67.9 | 0.0 (order-independent — sanity check ✓) |
+
+**The PC-FM's entire advantage over the raw-DE ceiling is temporal:** shuffling drops it
+from 72.6 to 67.4 — the raw-DE level — so pc−raw goes +4.8 → −0.5. Destroying time order
+removes the FM's edge over a linear baseline. This is causal evidence that the sleep gain
+comes from temporal dynamics, the opposite of static emotion DE (where order-shuffle cost
+~0–1 pt, [[EXP-0002]]). raw_de is unchanged (per-epoch, order-independent), validating the
+control.
+
 ### 4b. Preliminary — partial corpus *(run date: 2026-07-06, superseded)*
 
 Partial corpus (18 recordings, **9 subjects**, 18.8k epochs; 30-epoch pretrain).
@@ -211,9 +230,13 @@ and paired per-fold tests make both wins significant — pc > raw_de (+5.2, p=0.
 5/5 folds) and pc > rand (+14.5, p<0.0001, 5/5 folds). The single-seed headline is not
 seed-luck, and the peak-accuracy win over raw-DE is statistically sound.
 
-**Remaining:** (1) an order-shuffle temporal control (pre-registered §1) to show the
-gain is specifically *temporal*. (2) A second dynamic task for the cross-task claim
-(data-blocked).
+**Temporal-cause confirmed (§4e):** the pre-registered order-shuffle control shows the
+FM's entire advantage over raw-DE is temporal (shuffling epoch order drops pc 72.6→67.4,
+to the raw-DE level). Directly supports the "PC helps ∝ temporal dynamics" thesis.
+
+**Remaining:** only a second dynamic task for the cross-task "foundation model" claim,
+which is data-blocked (dataset not yet on disk). All compute-runnable F13 experiments
+are complete.
 
 ---
 
