@@ -104,6 +104,9 @@ def subject_kfold_eval(X, subj, y, k, classifier):
         "acc_mean": a.mean() * 100, "acc_std": a.std() * 100,
         "f1_mean": f.mean() * 100, "f1_std": f.std() * 100,
         "kappa_mean": kp.mean(), "kappa_std": kp.std(),
+        "acc_folds": (a * 100).tolist(),
+        "f1_folds": (f * 100).tolist(),
+        "kappa_folds": kp.tolist(),
     }
 
 
@@ -115,6 +118,7 @@ def main() -> None:
     ap.add_argument("--classifiers", nargs="+", default=["logreg"])
     ap.add_argument("--k", type=int, default=5, help="subject-disjoint folds")
     ap.add_argument("--out_dir", default="results/phase3/f13")
+    ap.add_argument("--tag", default="", help="suffix for output files (e.g. _seed1)")
     args = ap.parse_args()
 
     import torch
@@ -147,7 +151,7 @@ def main() -> None:
                      r["kappa_mean"], r["kappa_std"], r["runs"])
             rows.append((name, clf, r))
 
-    csv_path = out_dir / "f13_sleep.csv"
+    csv_path = out_dir / f"f13_sleep{args.tag}.csv"
     with csv_path.open("w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["features", "classifier", "folds", "acc_mean", "acc_std",
@@ -156,8 +160,18 @@ def main() -> None:
             w.writerow([name, clf, r["runs"], f"{r['acc_mean']:.2f}", f"{r['acc_std']:.2f}",
                         f"{r['f1_mean']:.2f}", f"{r['f1_std']:.2f}",
                         f"{r['kappa_mean']:.3f}", f"{r['kappa_std']:.3f}"])
-    LOG.info("wrote %s  (chance=%.1f%%, %d classes: %s)",
-             csv_path, 100.0 / len(LABEL_NAMES), len(LABEL_NAMES), LABEL_NAMES)
+
+    # per-fold values (for paired significance tests across seeds/models)
+    perfold_path = out_dir / f"f13_sleep{args.tag}_perfold.csv"
+    with perfold_path.open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["features", "classifier", "fold", "acc", "f1", "kappa"])
+        for name, clf, r in rows:
+            for i in range(r["runs"]):
+                w.writerow([name, clf, i, f"{r['acc_folds'][i]:.4f}",
+                            f"{r['f1_folds'][i]:.4f}", f"{r['kappa_folds'][i]:.4f}"])
+    LOG.info("wrote %s and %s  (chance=%.1f%%, %d classes: %s)",
+             csv_path, perfold_path, 100.0 / len(LABEL_NAMES), len(LABEL_NAMES), LABEL_NAMES)
 
 
 if __name__ == "__main__":
