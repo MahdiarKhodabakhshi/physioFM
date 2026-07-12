@@ -109,15 +109,17 @@ def lopo_eval(X, subj, y, classifier, n_jobs=-1, fracs=(1.0,), subsample_seeds=1
             bucket[frac][p].append(r)
     out = {}
     for frac in fracs:
-        per_patient = [np.mean(v, axis=0) for v in bucket[frac].values()]
-        a = np.array(per_patient) if per_patient else np.zeros((0, 4))
-        out[frac] = {"patients": len(per_patient),
+        pats = sorted(bucket[frac].keys())
+        per_patient = {p: np.mean(bucket[frac][p], axis=0) for p in pats}  # seed-avg per patient
+        a = np.array([per_patient[p] for p in pats]) if pats else np.zeros((0, 4))
+        out[frac] = {"patients": len(pats),
                      "bal_acc": a[:, 0].mean() * 100 if len(a) else 0.0,
                      "bal_acc_std": a[:, 0].std() * 100 if len(a) else 0.0,
                      "sens": a[:, 1].mean() * 100 if len(a) else 0.0,
                      "spec": a[:, 2].mean() * 100 if len(a) else 0.0,
                      "auc": a[:, 3].mean() if len(a) else 0.0,
-                     "auc_std": a[:, 3].std() if len(a) else 0.0}
+                     "auc_std": a[:, 3].std() if len(a) else 0.0,
+                     "per_patient": per_patient}  # for paired significance tests
     return out
 
 
@@ -177,7 +179,18 @@ def main() -> None:
             w.writerow([name, clf, f"{frac:.2f}", r["patients"], f"{r['bal_acc']:.2f}",
                         f"{r['bal_acc_std']:.2f}", f"{r['sens']:.2f}", f"{r['spec']:.2f}",
                         f"{r['auc']:.3f}", f"{r['auc_std']:.3f}"])
-    LOG.info("wrote %s", out_dir / f"f17_chbmit{args.tag}.csv")
+
+    # per-patient values (for paired significance tests: pc vs raw, pc vs rand)
+    pp_path = out_dir / f"f17_chbmit{args.tag}_perpatient.csv"
+    with pp_path.open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["features", "classifier", "label_frac", "patient",
+                    "bal_acc", "sensitivity", "specificity", "auc"])
+        for name, clf, frac, r in rows:
+            for p, v in sorted(r["per_patient"].items()):
+                w.writerow([name, clf, f"{frac:.2f}", int(p), f"{v[0]*100:.4f}",
+                            f"{v[1]*100:.4f}", f"{v[2]*100:.4f}", f"{v[3]:.4f}"])
+    LOG.info("wrote %s and %s", out_dir / f"f17_chbmit{args.tag}.csv", pp_path)
 
 
 if __name__ == "__main__":
