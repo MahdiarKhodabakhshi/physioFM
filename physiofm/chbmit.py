@@ -79,13 +79,21 @@ def parse_summary(summary_path: str | Path) -> dict[str, list[tuple[float, float
 
 
 def _pick_channels(raw, channels):
-    """Case-insensitive channel pick honoring the requested order; None if any missing."""
-    have = {c.upper().replace(" ", ""): c for c in raw.ch_names}
+    """Case-insensitive channel pick honoring the requested order; None if any missing.
+    Registers both the raw name and its de-duplicated base (T8-P8-0/-1 -> T8-P8), first
+    occurrence winning, so the standard montage names resolve."""
+    def norm(s):
+        return s.upper().replace(" ", "")
+
+    have: dict[str, str] = {}
+    for c in raw.ch_names:
+        n = norm(c)
+        have.setdefault(n, c)
+        base = re.sub(r"-[01]$", "", n)  # T8-P8-0 -> T8-P8
+        have.setdefault(base, c)
     picks = []
     for want in channels:
-        key = want.upper().replace(" ", "").replace("-0", "").replace("-1", "")
-        # try exact, then base name (handles T8-P8-0/-1 duplicates)
-        match = have.get(want.upper().replace(" ", "")) or have.get(key)
+        match = have.get(norm(want))
         if match is None:
             return None
         picks.append(match)
@@ -105,7 +113,10 @@ def load_recording(edf_path, intervals, channels=CORE_CHANNELS, bands=DEFAULT_BA
     import mne
 
     edf_path = Path(edf_path)
-    raw = mne.io.read_raw_edf(edf_path, preload=True, verbose="ERROR")
+    try:  # some CHB-MIT files are tiny placeholders (e.g. chb02_16+.edf, 303 B)
+        raw = mne.io.read_raw_edf(edf_path, preload=True, verbose="ERROR")
+    except Exception:
+        return None
     picks = _pick_channels(raw, channels)
     if picks is None:
         return None
