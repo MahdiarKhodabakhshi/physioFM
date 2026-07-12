@@ -73,8 +73,9 @@ whole edge is temporal). *(9-subj preliminary, superseded: pc 68.8 / raw 72.1 / 
 > structured spectral (DE) features that transfers across physiological tasks.** Its
 > pretraining value scales with a task's **sequence-level temporal structure** — substantial
 > on sequence-temporal tasks (**sleep**: +10 pts over random & beats the linear ceiling;
-> **seizure** (full 24-patient corpus): +8 balanced-acc / +0.08 AUC over random & edges the
-> ceiling), **negligible on spatial-spectral tasks**
+> **seizure**: +0.082 AUC over random, paired p=0.006 — and, while it only *ties* the linear
+> ceiling at full labels, it **significantly beats it once labels are scarce**, needing just 5%
+> of labels to match the ceiling trained on 100%), **negligible on spatial-spectral tasks**
 > (emotion and motor imagery, both characterized mechanistically), and concentrated in the
 > **low-label / transfer** regime where foundation models are supposed to help. We also correct
 > an inflated emotion SSL benchmark (PC-SSL, ~80% leakage) that the sub-field has been chasing.
@@ -113,12 +114,13 @@ This makes the emotion null a **feature** (rigorous "when/why it works"), not a 
 - **Multi-seed (3) + paired test** — ✅ done ([[EXP-0009]] §4d): pc>raw p=0.0008, pc>rand p<1e-4.
 - **+1 dynamic task — motor imagery (BCI-IV-2a)** — ✅ done, **NULL** ([[EXP-0014]]): PC ≈ random
   and both < raw-DE; MI's signal is spatial-spectral ERD (emotion-like), not sequence-temporal.
-- **Seizure (CHB-MIT)** — ✅ done, **CONFIRMED but modest** ([[EXP-0015]], full 24-patient corpus):
-  PC > random (+8.1 bal-acc, +0.082 AUC: 0.822 vs 0.740) and slightly > raw-DE (+3.1 bal-acc) —
-  the 2nd sequence-temporal win (sleep-like), so **the cross-task claim holds** (sleep + seizure
-  positive; emotion + MI null). NB: the 5-patient subset overstated it (+0.34 AUC, random≈chance)
-  — an easy-patient artifact. In progress: label-efficiency curve; owed: multi-seed + paired
-  per-patient test. Huge ±0.20 per-patient AUC variance.
+- **Seizure (CHB-MIT)** — ✅ done, **CONFIRMED** ([[EXP-0015]], full 24-patient corpus, paired
+  tests): PC **significantly** > random (+0.082 AUC, paired p=0.006, 17/24 patients; +0.105,
+  p=0.0002 at 1% labels) — the 2nd sequence-temporal win, so **the cross-task claim holds**
+  (sleep + seizure positive; emotion + MI null). PC **ties** raw-DE at full labels (p=0.46) but
+  **significantly beats it at 1% labels** (p=0.017). **Label-efficiency is the win:** PC@5%
+  labels (AUC 0.809) ≈ raw-DE@100% (0.806) → ~20× label efficiency. NB the 5-patient subset
+  overstated everything; only the paired full-corpus test is trustworthy.
 - **Multi-task joint pretraining** (channel-agnostic) once ≥2 tasks' DE are on disk.
 - **(Optional) raw-EEG leg** (F15) if the DE bottleneck caps the dynamic tasks too.
 

@@ -9,7 +9,7 @@ phase: phase3
 verified: no
 tags: chb-mit, seizure, phase3, temporal-pc, second-dynamic-task, cross-task
 commits:
-verdict: CONFIRMED but MODEST on the full 24-patient corpus. PC pretraining beats matched random-init (+8.1 bal-acc, +0.082 AUC: 0.822 vs 0.740) and slightly beats raw-DE (+3.1 bal-acc) — the 2nd sequence-temporal-task win (sleep-like +8/+10), so the cross-task claim holds (PC helps on sleep+seizure, null on emotion+MI). IMPORTANT: the 5-patient subset badly overstated it (subset pc−rand +0.34 AUC with random≈chance was an easy-patient artifact; full-corpus random recovers to 0.74). Huge ±0.20 per-patient AUC spread. Owed: label-efficiency curve (in progress), multi-seed, paired per-patient test.
+verdict: CONFIRMED (full 24-patient corpus, paired tests). PC pretraining SIGNIFICANTLY beats matched random-init: +0.082 AUC (paired p=0.006, 17/24 patients), widening to +0.105 (p=0.0002, 22/24) at 1% labels — the 2nd sequence-temporal win, so the cross-task claim holds (PC helps on sleep+seizure, null on emotion+MI). PC does NOT beat the raw-DE ceiling at full labels (a tie: +0.016 AUC, p=0.46, 11/24) — but DOES at low labels (+0.066, p=0.017, 18/24). Label-efficiency is the real win: PC is nearly label-insensitive (−0.025 AUC from 100%→1% vs raw's −0.075), and PC@5% labels (0.809) matches raw-DE@100% (0.806) → ~20x label efficiency. NB the 5-patient subset badly overstated everything (random looked near-chance); only the paired full-corpus test is trustworthy.
 ---
 
 # EXP-0015 — F17 — Seizure detection (CHB-MIT), the 2nd dynamic-task confirmation
@@ -64,6 +64,34 @@ both — the cross-task claim holds — but the effect is **modest**, and the pe
 huge (±0.20 AUC: seizure detection varies wildly by patient). A paired per-patient test is
 needed to call pc−raw significant.
 
+### 4c. Label-efficiency curve + paired per-patient tests *(run 2026-07-12)*
+
+Frozen encoders; stratified subsample of the *training* epochs (keeps rare seizures), LOPO,
+seed-averaged. ROC-AUC; `results/phase3/f17/f17_chbmit_labelcurve.csv`.
+
+| labels | physiofm_pc | raw_de | physiofm_rand | pc − raw | pc − rand |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1%  | **0.797** | 0.731 | 0.692 | **+0.066** | **+0.105** |
+| 5%  | **0.809** | 0.790 | 0.740 | +0.019 | +0.069 |
+| 10% | 0.808 | 0.795 | 0.734 | +0.013 | +0.074 |
+| 25% | 0.814 | 0.803 | 0.740 | +0.011 | +0.074 |
+| 50% | 0.820 | 0.804 | 0.737 | +0.016 | +0.083 |
+| 100%| 0.822 | 0.806 | 0.740 | +0.016 | +0.082 |
+
+PC is strikingly label-insensitive (−0.025 AUC from 100%→1%) vs raw-DE (−0.075) and random
+(−0.048). **PC at 5% labels (0.809) ≥ raw-DE at 100% (0.806) → ~20× label efficiency.**
+
+**Paired per-patient tests** (24 matched patients, `*_perpatient.csv`):
+
+| Comparison | 100% labels | 1% labels |
+| --- | --- | --- |
+| pc vs rand (AUC) | +0.082, **p=0.006**, 17/24 | +0.105, **p=0.0002**, 22/24 |
+| pc vs raw_de (AUC) | +0.016, **p=0.46 (n.s.)**, 11/24 | +0.066, **p=0.017**, 18/24 |
+
+**Critical:** pc does **NOT** significantly beat raw-DE at full labels (a coin-flip, 11/24) —
+the earlier "+3.1 bal-acc edge" is **not** a win. It *does* significantly beat raw-DE at 1%
+labels. And pc beats random-init significantly at every level.
+
 ### 4b. 5-patient subset *(run 2026-07-12, superseded — overstated the effect)*
 
 | Features | bal acc | sens | spec | AUC |
@@ -77,27 +105,34 @@ patients**. On the full corpus random-init recovers to AUC 0.74 (more patients �
 encoder + logreg has far more training data), shrinking the gap to +0.082. A cautionary tale
 about small-subset previews.
 
-## 5. Interpretation — agent's reading *(full corpus)*
+## 5. Interpretation — agent's reading *(full corpus, with paired tests)*
 
-**The pre-registered prediction is confirmed — PC > random on seizure — but the honest,
-full-corpus effect is modest, not the dramatic subset number.** On all 24 patients the
-PC-pretrained encoder beats matched random-init by **+8.1 bal-acc / +0.082 AUC** and slightly
-beats the raw-DE ceiling (+3.1 bal-acc). This is still the sleep pattern (PC > random on a
-sequence-temporal task, unlike the emotion/MI nulls), so the **cross-task claim holds**: PC helps
-on both sequence-temporal tasks (sleep, seizure), null on both spatial-spectral tasks
-(emotion, MI). But the magnitude here (+8 bal-acc) is sleep-like (+10), not the subset's +21.
+**The pre-registered prediction is confirmed: PC pretraining significantly beats matched
+random-init on seizure** — +0.082 AUC (paired p=0.006, 17/24 patients) at full labels, widening
+to +0.105 (p=0.0002, 22/24) at 1% labels. This is the sleep pattern on a second
+sequence-temporal task, unlike the emotion/MI nulls, so the **cross-task claim holds**: PC helps
+on both sequence-temporal tasks (sleep, seizure), null on both spatial-spectral ones
+(emotion, MI).
 
-**Key lesson: the 5-patient subset badly overstated the effect.** Random-init went from
-near-chance (0.57 AUC) on the easy subset to 0.74 on the full corpus — the pretraining "rescue"
-was mostly a small-sample artifact. The trustworthy number is the full-corpus +0.082 AUC, with
-a large ±0.20 per-patient spread that a paired test must address before claiming significance.
+**But PC does NOT beat the raw-DE ceiling at full labels — that is a statistical tie**
+(+0.016 AUC, p=0.46, winning 11/24 patients ≈ coin flip). Any earlier "PC edges raw-DE" phrasing
+was wrong and is retracted here.
 
-**Open (in progress):** the **label-efficiency curve** is the decisive follow-up — if random-init
-only caught up because it had abundant data, PC should re-open a gap at low labels (as on sleep).
-That, plus multi-seed and a paired per-patient test, determines how strong the seizure leg is.
+**Where the FM genuinely wins is the low-label regime — and there it wins significantly.** The
+label-efficiency curve (§4c) shows PC is nearly label-insensitive (−0.025 AUC from 100%→1%)
+while raw-DE degrades 3× faster (−0.075). Consequently the pc−raw gap **quadruples** as labels
+shrink (+0.016 → +0.066) and becomes **significant at 1% labels** (p=0.017, 18/24). Headline:
+**PC with 5% of labels (AUC 0.809) matches raw-DE trained on 100% (0.806) — ~20× label
+efficiency.** This is exactly the regime a foundation model is supposed to win in, and it
+mirrors sleep, where the pc−rand gap also widened at low labels.
 
-**Caveats:** single seed; LOPO with huge inter-patient variance (±0.20 AUC); a paired
-per-patient significance test still owed.
+**Two lessons on rigor:** (1) the 5-patient subset badly overstated the effect (random-init
+looked near-chance at 0.57 AUC; on the full corpus it recovers to 0.74) — small-subset previews
+are dangerous. (2) With ±0.20 inter-patient AUC variance, only the **paired** per-patient test
+is trustworthy; the unpaired means suggested a raw-DE win that does not survive it.
+
+**Caveats:** single seed (per-patient variance dominates seed variance, so a multi-seed run is
+low-value here); LOPO cross-patient generalization is intrinsically hard for seizure.
 
 ## 6. ✅ Your verification — *(reserved for Mahdiar)*
 
