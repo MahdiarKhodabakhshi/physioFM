@@ -71,11 +71,17 @@ whole edge is temporal). *(9-subj preliminary, superseded: pc 68.8 / raw 72.1 / 
 
 > **PhysioFM: a lightweight, interpretable predictive-coding foundation model on
 > structured spectral (DE) features that transfers across physiological tasks.** Its
-> pretraining value scales with a task's temporal dynamics — negligible on static-spectral
-> emotion (which we characterize mechanistically), substantial on dynamic tasks (sleep;
-> +19 pts over random), and concentrated in the **low-label / transfer** regime where
-> foundation models are supposed to help. We also correct an inflated emotion SSL benchmark
-> (PC-SSL, ~80% leakage) that the sub-field has been chasing.
+> pretraining value scales with a task's **sequence-level temporal structure** — substantial
+> on sequence-temporal tasks (**sleep**: +10 pts over random & beats the linear ceiling;
+> **seizure**: +21 balanced-acc, random ≈ chance), **negligible on spatial-spectral tasks**
+> (emotion and motor imagery, both characterized mechanistically), and concentrated in the
+> **low-label / transfer** regime where foundation models are supposed to help. We also correct
+> an inflated emotion SSL benchmark (PC-SSL, ~80% leakage) that the sub-field has been chasing.
+
+The 2×2 that defines the contribution: PC pretraining helps on **sleep** & **seizure**
+(sequence-temporal), is a **null** on **emotion** & **motor imagery** (spatial-spectral) — a
+clean, mechanistic "when and why temporal SSL helps EEG," now with two positives and two
+negatives rather than a single data point.
 
 This makes the emotion null a **feature** (rigorous "when/why it works"), not a failure.
 
@@ -106,9 +112,11 @@ This makes the emotion null a **feature** (rigorous "when/why it works"), not a 
 - **Multi-seed (3) + paired test** — ✅ done ([[EXP-0009]] §4d): pc>raw p=0.0008, pc>rand p<1e-4.
 - **+1 dynamic task — motor imagery (BCI-IV-2a)** — ✅ done, **NULL** ([[EXP-0014]]): PC ≈ random
   and both < raw-DE; MI's signal is spatial-spectral ERD (emotion-like), not sequence-temporal.
-  So MI does *not* give the cross-task confirmation. **Fork:** (a) reframe as a mechanistic
-  "when does temporal SSL help EEG" study (sleep +; emotion & MI −), or (b) test **seizure
-  CHB-MIT** (genuine sequence dynamics) as the truer 2nd positive. Recommend (b), (a) as fallback.
+- **Seizure (CHB-MIT)** — ✅ done, **CONFIRMED** ([[EXP-0015]], 5-patient subset): PC ≫ random
+  (+21.5 balanced-acc; AUC 0.916 vs 0.574 ≈ chance) — the 2nd dynamic-task win; FM matches the
+  raw-DE ceiling. **Cross-task claim now holds** (sleep + seizure positive; emotion + MI null),
+  so the foundation-model framing is defensible. Next: full 24-patient corpus + multi-seed +
+  seizure label-efficiency curve.
 - **Multi-task joint pretraining** (channel-agnostic) once ≥2 tasks' DE are on disk.
 - **(Optional) raw-EEG leg** (F15) if the DE bottleneck caps the dynamic tasks too.
 
