@@ -128,7 +128,8 @@ def load_recording(edf_path, intervals, channels=CORE_CHANNELS, bands=DEFAULT_BA
     if n == 0:
         return None
     labels = _epoch_seizure_labels(intervals, n)
-    m = re.search(r"chb(\d+)_(\d+)", edf_path.stem)
+    # chb17 uses letter-suffixed sub-sessions (chb17a_/17b_/17c_); keep the numeric patient
+    m = re.search(r"chb(\d+)[a-z]?_(\d+)", edf_path.stem)
     patient = int(m.group(1)) if m else -1
     file_idx = int(m.group(2)) if m else -1
     return SeizureRecording(patient, file_idx, edf_path.stem,
