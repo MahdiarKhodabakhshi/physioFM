@@ -27,6 +27,10 @@ ARCH = {
     # sleep-stage labels live in the companion sleep_edf_labels.npz read by the
     # sleep evaluator (scripts/phase2_f13_sleep.py).
     "sleep_edf": "data/physiofm/de_features/sleep_edf_de.npz",
+    # F16 (Phase 3): BCI-IV-2a motor imagery, 2nd dynamic task. Per-trial DE
+    # sequence (13 windows x 22 ch x 5 bands); per-trial 4-way label; session
+    # 1=T / 2=E for the canonical leakage-free session-holdout eval.
+    "bci_iv_2a": "data/physiofm/de_features/bci_iv_2a_de.npz",
 }
 
 
