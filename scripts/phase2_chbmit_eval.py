@@ -48,15 +48,32 @@ def _load():
     return trials, labels
 
 
-def _fit_patient(X, subj, y, p, classifier):
+def _fit_patient(X, subj, y, p, classifier, label_frac=1.0, sseed=0):
+    """One held-out patient. At label_frac<1 the *training* epochs are stratified-
+    subsampled (keep the fraction of seizure and of interictal epochs separately, so
+    rare seizures aren't lost) — the label-efficiency knob."""
     from sklearn.metrics import balanced_accuracy_score, recall_score, roc_auc_score
 
-    tr = subj != p
     te = subj == p
-    if tr.sum() == 0 or te.sum() == 0 or len(np.unique(y[te])) < 2:
+    if te.sum() == 0 or len(np.unique(y[te])) < 2:
         return None  # need both classes in the held-out patient for sens/spec/AUC
+    tr_idx = np.where(subj != p)[0]
+    if tr_idx.size == 0:
+        return None
+    if label_frac < 1.0:
+        rng = np.random.default_rng(1000 * sseed + int(p))
+        parts = []
+        for c in (0, 1):
+            idx_c = tr_idx[y[tr_idx] == c]
+            if idx_c.size == 0:
+                continue
+            k = max(1, int(round(label_frac * idx_c.size)))
+            parts.append(rng.choice(idx_c, size=min(k, idx_c.size), replace=False))
+        tr_idx = np.concatenate(parts)
+    if len(np.unique(y[tr_idx])) < 2:
+        return None
     clf = CLASSIFIERS[classifier]()
-    clf.fit(X[tr], y[tr])
+    clf.fit(X[tr_idx], y[tr_idx])
     pred = clf.predict(X[te])
     try:
         score = clf.predict_proba(X[te])[:, 1]
@@ -70,19 +87,38 @@ def _fit_patient(X, subj, y, p, classifier):
     )
 
 
-def lopo_eval(X, subj, y, classifier, n_jobs=-1):
+def lopo_eval(X, subj, y, classifier, n_jobs=-1, fracs=(1.0,), subsample_seeds=1):
+    """Per-fraction LOPO metrics (mean over patients, seed-averaged at frac<1)."""
+    from collections import defaultdict
+
     from joblib import Parallel, delayed
 
     patients = sorted(set(subj.tolist()))
-    res = Parallel(n_jobs=n_jobs, max_nbytes="1M")(
-        delayed(_fit_patient)(X, subj, y, p, classifier) for p in patients
+    tasks = []
+    for frac in fracs:
+        seeds = [0] if frac >= 1.0 else list(range(subsample_seeds))
+        for p in patients:
+            for s in seeds:
+                tasks.append((frac, p, s))
+    raw = Parallel(n_jobs=n_jobs, max_nbytes="1M")(
+        delayed(_fit_patient)(X, subj, y, p, classifier, frac, s) for (frac, p, s) in tasks
     )
-    res = [r for r in res if r is not None]
-    a = np.array(res)  # (n, 4): bal_acc, sens, spec, auc
-    return {"patients": len(res),
-            "bal_acc": a[:, 0].mean() * 100, "bal_acc_std": a[:, 0].std() * 100,
-            "sens": a[:, 1].mean() * 100, "spec": a[:, 2].mean() * 100,
-            "auc": a[:, 3].mean(), "auc_std": a[:, 3].std()}
+    bucket = defaultdict(lambda: defaultdict(list))  # frac -> patient -> [(4,) over seeds]
+    for (frac, p, s), r in zip(tasks, raw):
+        if r is not None:
+            bucket[frac][p].append(r)
+    out = {}
+    for frac in fracs:
+        per_patient = [np.mean(v, axis=0) for v in bucket[frac].values()]
+        a = np.array(per_patient) if per_patient else np.zeros((0, 4))
+        out[frac] = {"patients": len(per_patient),
+                     "bal_acc": a[:, 0].mean() * 100 if len(a) else 0.0,
+                     "bal_acc_std": a[:, 0].std() * 100 if len(a) else 0.0,
+                     "sens": a[:, 1].mean() * 100 if len(a) else 0.0,
+                     "spec": a[:, 2].mean() * 100 if len(a) else 0.0,
+                     "auc": a[:, 3].mean() if len(a) else 0.0,
+                     "auc_std": a[:, 3].std() if len(a) else 0.0}
+    return out
 
 
 def main() -> None:
@@ -93,6 +129,9 @@ def main() -> None:
     ap.add_argument("--classifiers", nargs="+", default=["logreg"])
     ap.add_argument("--n_jobs", type=int, default=-1)
     ap.add_argument("--batch_size", type=int, default=8)  # long seizure recordings
+    ap.add_argument("--label_fracs", type=float, nargs="+", default=[1.0],
+                    help="label-efficiency sweep (stratified train subsample)")
+    ap.add_argument("--subsample_seeds", type=int, default=3)
     ap.add_argument("--out_dir", default="results/phase3/f17")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
@@ -118,22 +157,26 @@ def main() -> None:
         raise SystemExit("nothing to evaluate")
 
     out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    fracs = sorted(args.label_fracs)
     rows = []
     for name, (X, subj, y) in feats.items():
         for clf in args.classifiers:
-            r = lopo_eval(X, subj, y, clf, args.n_jobs)
-            LOG.info("RESULT %-14s %-8s bal_acc=%.2f±%.2f sens=%.2f spec=%.2f auc=%.3f±%.3f (%d patients)",
-                     name, clf, r["bal_acc"], r["bal_acc_std"], r["sens"], r["spec"],
-                     r["auc"], r["auc_std"], r["patients"])
-            rows.append((name, clf, r))
+            res = lopo_eval(X, subj, y, clf, args.n_jobs, fracs, args.subsample_seeds)
+            for frac in fracs:
+                r = res[frac]
+                LOG.info("RESULT %-14s %-8s frac=%.2f bal_acc=%.2f±%.2f sens=%.2f spec=%.2f auc=%.3f±%.3f (%d pat)",
+                         name, clf, frac, r["bal_acc"], r["bal_acc_std"], r["sens"], r["spec"],
+                         r["auc"], r["auc_std"], r["patients"])
+                rows.append((name, clf, frac, r))
 
     with (out_dir / f"f17_chbmit{args.tag}.csv").open("w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["features", "classifier", "patients", "bal_acc", "bal_acc_std",
+        w.writerow(["features", "classifier", "label_frac", "patients", "bal_acc", "bal_acc_std",
                     "sensitivity", "specificity", "auc", "auc_std"])
-        for name, clf, r in rows:
-            w.writerow([name, clf, r["patients"], f"{r['bal_acc']:.2f}", f"{r['bal_acc_std']:.2f}",
-                        f"{r['sens']:.2f}", f"{r['spec']:.2f}", f"{r['auc']:.3f}", f"{r['auc_std']:.3f}"])
+        for name, clf, frac, r in rows:
+            w.writerow([name, clf, f"{frac:.2f}", r["patients"], f"{r['bal_acc']:.2f}",
+                        f"{r['bal_acc_std']:.2f}", f"{r['sens']:.2f}", f"{r['spec']:.2f}",
+                        f"{r['auc']:.3f}", f"{r['auc_std']:.3f}"])
     LOG.info("wrote %s", out_dir / f"f17_chbmit{args.tag}.csv")
 
 
