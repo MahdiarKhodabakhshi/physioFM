@@ -31,6 +31,11 @@ ARCH = {
     # sequence (13 windows x 22 ch x 5 bands); per-trial 4-way label; session
     # 1=T / 2=E for the canonical leakage-free session-holdout eval.
     "bci_iv_2a": "data/physiofm/de_features/bci_iv_2a_de.npz",
+    # F17 (Phase 3): CHB-MIT scalp-EEG seizure detection — the truer 2nd dynamic
+    # task (genuine sequence-level dynamics). Per-epoch DE (2 s epochs x 18 ch x 5
+    # bands); per-epoch binary label (seizure/interictal) in the companion
+    # chbmit_labels.npz, read by the seizure evaluator.
+    "chbmit": "data/physiofm/de_features/chbmit_de.npz",
 }
 
 
