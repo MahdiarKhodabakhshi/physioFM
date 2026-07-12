@@ -1,15 +1,15 @@
 ---
 id: EXP-0014
 title: F16 — Motor imagery (BCI-IV-2a), the 2nd dynamic task
-status: blocked
+status: done
 created: 2026-07-12
-run_date:
+run_date: 2026-07-12
 agent: claude-code
 phase: phase3
 verified: no
-tags: bci-iv-2a, motor-imagery, phase3, temporal-pc, second-dynamic-task
+tags: bci-iv-2a, motor-imagery, phase3, temporal-pc, second-dynamic-task, null-result
 commits:
-verdict: (in progress) pipeline built + validated, DE archive ready, raw-DE baseline 51.0±14.3% (session-holdout, chance 25%). PC-vs-random pretraining is GPU-blocked (pod stopped) — one command (`bash scripts/run_bci.sh`) when the pod is back. Turns "SSL helps sleep" into a cross-task claim if PC>random holds here too.
+verdict: NULL for the FM on motor imagery. PC ≈ random-init (42.4 vs 43.6%, pc even lower) and BOTH are below raw-DE (51.1%) — temporal PC adds nothing and the encoder underperforms the linear ceiling. Unlike sleep, so this does NOT give the 2nd-dynamic-task confirmation. Consistent reading: MI's discriminative signal is spatial-spectral ERD (like emotion), not sequence-temporal (like sleep) — it refines the thesis ("PC helps ∝ temporal structure in the DE-window sequence") but weakens the broad cross-task foundation-model claim. Seizure (CHB-MIT), with genuine sequence-level dynamics, is the truer test.
 ---
 
 # EXP-0014 — F16 — Motor imagery (BCI-IV-2a), the 2nd dynamic task
@@ -52,27 +52,47 @@ Report acc/macro-F1/κ mean ± std across the 9 subjects, pc vs rand vs raw-DE.
 - 2026-07-12 — pipeline built and validated on CPU: downloaded BCI-IV-2a (18 files, ~740 MB),
   built the DE archive (5,184 trials, `(13,22,5)`, balanced 1296/class, T/E = 2592/2592, 0 NaN
   skips), registered `bci_iv_2a` in `structured_data.ARCH`, wrote loader/build/eval/driver.
-  **raw-DE session-holdout baseline: 51.0 ± 14.3% / κ 0.347** (chance 25%). PC-vs-random
-  pretraining **blocked** — the pod was stopped; unblock = restart pod, `bash scripts/run_bci.sh`.
+  **raw-DE session-holdout baseline: 51.0 ± 14.3% / κ 0.347** (chance 25%).
+- 2026-07-12 — pod restarted; ran `run_bci.sh` on the H100 (PC pretrain 60 ep + random-init +
+  eval, ~2 min). **Result: PC 42.4 ≈ rand 43.6, both < raw-DE 51.1 — a null (see §4/§5).**
 
-## 4. Results *(partial — baseline only)*
+## 4. Results *(run 2026-07-12)*
 
 Session-holdout (train T → test E), 9 subjects, chance 25%. `results/phase3/f16/f16_bci.csv`.
+PC pretrain 60 epochs (best PC-MSE 0.211), matched random-init, `p_in=1 p_out=8`.
 
 | Features | acc | macro-F1 | κ |
 | --- | ---: | ---: | ---: |
-| raw_de (logreg) | 51.00 ± 14.31 | 48.32 | 0.347 |
-| physiofm_pc | _pending pod_ | | |
-| physiofm_rand | _pending pod_ | | |
+| raw_de (logreg) | **51.1 ± 14.3** | 48.4 | 0.348 |
+| physiofm_pc | 42.4 ± 9.9 | 40.2 | 0.231 |
+| physiofm_rand | 43.6 ± 9.5 | 41.5 | 0.248 |
 
-## 5. Interpretation — agent's reading *(partial)*
+**pc − rand = −1.3 (null); FM − raw ≈ −8 (FM underperforms the linear ceiling).**
 
-The 51% raw-DE baseline is in the expected BCI-IV-2a range for simple band features (CSP-based
-winners reach ~60–70%); the large ±14 std is the known "BCI-illiteracy" inter-subject spread.
-The pipeline reproduces the standard leakage-free protocol, so the pending PC-vs-random result
-is a clean test of the thesis on a 2nd dynamic task. If pc > random here as on sleep, the
-cross-task foundation-model claim is supported; if pc ≈ random, MI's within-trial dynamics
-(only 13 windows) may be too short for temporal PC — itself an informative boundary on the thesis.
+## 5. Interpretation — agent's reading
+
+**A null for the FM, and honestly so.** Two findings: (1) PC pretraining ≈ random-init (pc
+even marginally lower) — temporal PC adds nothing on MI, the mirror of the emotion null rather
+than the sleep win; (2) both FM variants sit ~8 pts *below* raw-DE. Finding (1) is the clean,
+readout-robust result (pc/rand share the mean-pool readout); finding (2) is partly readout-
+sensitive (trial mean-pool may dilute a discriminative window) but the *pretraining* clearly
+does not help regardless.
+
+**Why this is consistent with — and sharpens — the thesis.** MI's discriminative signal is
+**event-related desynchronization**: a spatial-spectral pattern (which sensorimotor channels /
+mu-beta bands lose power), largely *static over the imagery period*. That makes MI like emotion
+(spatial-spectral, [[EXP-0010]]) more than like sleep (sequence-temporal). So the honest thesis
+is narrower than "dynamic tasks": *PC pretraining helps in proportion to temporal structure in
+the DE-window sequence at the modeled timescale* — sleep has it (night-long stage dynamics),
+emotion and MI largely don't.
+
+**Strategic consequence.** With sleep the lone positive, this does **not** support a broad
+cross-task "foundation model" claim. Options: (a) reframe as a mechanistic "when does temporal
+SSL help EEG" study (sleep positive; emotion + MI negatives; clean mechanism); (b) test
+**seizure (CHB-MIT)**, which has genuine sequence-level temporal dynamics and is the truer 2nd
+positive candidate; (c) MI caveats worth a check before over-claiming the null — very short
+13-window trials, weak DE-vs-CSP features, and mean-pool readout. Recommend (b) as the decisive
+next test, with (a) as the fallback framing.
 
 ## 6. ✅ Your verification — *(reserved for Mahdiar)*
 

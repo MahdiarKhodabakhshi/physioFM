@@ -103,8 +103,12 @@ This makes the emotion null a **feature** (rigorous "when/why it works"), not a 
 - **F13 definitive** — ✅ done (78 subj, full corpus): pc 72.6 > raw 67.9 > rand 62.9.
 - **Sleep label-efficiency curve** (F7-analog) — ✅ done ([[EXP-0009]] §4c): pc−rand gain
   widens +9.8→+12.7 as labels drop to 1%; pc@1% beats both baselines @100%. The headline.
-- **Multi-seed (3) + paired test** — in progress (`run_f13_multiseed.sh`).
-- **+1 dynamic task** (seizure or MI) for the "multi-task" claim (data-blocked).
+- **Multi-seed (3) + paired test** — ✅ done ([[EXP-0009]] §4d): pc>raw p=0.0008, pc>rand p<1e-4.
+- **+1 dynamic task — motor imagery (BCI-IV-2a)** — ✅ done, **NULL** ([[EXP-0014]]): PC ≈ random
+  and both < raw-DE; MI's signal is spatial-spectral ERD (emotion-like), not sequence-temporal.
+  So MI does *not* give the cross-task confirmation. **Fork:** (a) reframe as a mechanistic
+  "when does temporal SSL help EEG" study (sleep +; emotion & MI −), or (b) test **seizure
+  CHB-MIT** (genuine sequence dynamics) as the truer 2nd positive. Recommend (b), (a) as fallback.
 - **Multi-task joint pretraining** (channel-agnostic) once ≥2 tasks' DE are on disk.
 - **(Optional) raw-EEG leg** (F15) if the DE bottleneck caps the dynamic tasks too.
 
