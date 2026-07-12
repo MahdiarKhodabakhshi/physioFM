@@ -9,7 +9,7 @@ phase: phase3
 verified: no
 tags: chb-mit, seizure, phase3, temporal-pc, second-dynamic-task, cross-task
 commits:
-verdict: CONFIRMED (5-patient subset). PC pretraining beats matched random-init massively on seizure — balanced-acc +21.5 pts, AUC 0.916 vs 0.574 (random ≈ chance) — the 2nd dynamic-task win after sleep and the mirror of the motor-imagery null. The FM matches the raw-DE ceiling (AUC ~0.91; trades sensitivity 43 for specificity 96 vs raw's 54/85). This is the cross-task evidence: PC helps on BOTH sequence-temporal tasks (sleep, seizure), null on BOTH spatial-spectral tasks (emotion, MI). Caveats: 5-patient subset, single seed, LOPO — full 24-patient corpus + multi-seed for the paper.
+verdict: CONFIRMED but MODEST on the full 24-patient corpus. PC pretraining beats matched random-init (+8.1 bal-acc, +0.082 AUC: 0.822 vs 0.740) and slightly beats raw-DE (+3.1 bal-acc) — the 2nd sequence-temporal-task win (sleep-like +8/+10), so the cross-task claim holds (PC helps on sleep+seizure, null on emotion+MI). IMPORTANT: the 5-patient subset badly overstated it (subset pc−rand +0.34 AUC with random≈chance was an easy-patient artifact; full-corpus random recovers to 0.74). Huge ±0.20 per-patient AUC spread. Owed: label-efficiency curve (in progress), multi-seed, paired per-patient test.
 ---
 
 # EXP-0015 — F17 — Seizure detection (CHB-MIT), the 2nd dynamic-task confirmation
@@ -46,37 +46,58 @@ logreg). `bash scripts/run_chbmit.sh`.
   → S3 6.8 MB/s); DE archive built (174 rec / 307k epochs / 0.40% seizure); pretrain+eval on the
   H100 (~3 min). Result below.
 
-## 4. Results *(run 2026-07-12)*
+## 4. Results
 
-Leave-one-patient-out, 5 patients, seizure = 0.40% of epochs. `results/phase3/f17/f17_chbmit.csv`.
+### 4a. Full corpus — 24 patients *(run 2026-07-12, definitive)*
+
+Leave-one-patient-out, **all 24 patients**, 682 recordings / 1.76M epochs / 0.32% seizure.
+`results/phase3/f17/f17_chbmit_full.csv`.
 
 | Features | balanced acc | sensitivity | specificity | ROC-AUC |
 | --- | ---: | ---: | ---: | ---: |
-| **physiofm_pc** | 69.5 ± 14.6 | 43.2 | 95.8 | **0.916 ± 0.055** |
+| **physiofm_pc** | 75.5 ± 14.3 | 65.2 | 85.8 | **0.822 ± 0.204** |
+| raw_de | 72.4 ± 15.6 | 67.1 | 77.7 | 0.806 ± 0.191 |
+| **physiofm_rand** | 67.4 ± 13.7 | 51.2 | 83.7 | **0.740 ± 0.202** |
+
+**pc − rand: +8.1 bal-acc, +0.082 AUC. pc − raw: +3.1 bal-acc, +0.016 AUC.** PC still beats
+both — the cross-task claim holds — but the effect is **modest**, and the per-patient spread is
+huge (±0.20 AUC: seizure detection varies wildly by patient). A paired per-patient test is
+needed to call pc−raw significant.
+
+### 4b. 5-patient subset *(run 2026-07-12, superseded — overstated the effect)*
+
+| Features | bal acc | sens | spec | AUC |
+| --- | ---: | ---: | ---: | ---: |
+| physiofm_pc | 69.5 ± 14.6 | 43.2 | 95.8 | 0.916 ± 0.055 |
 | raw_de | 69.5 ± 8.9 | 53.7 | 85.3 | 0.913 ± 0.047 |
-| **physiofm_rand** | 47.9 ± 2.7 | 11.1 | 84.7 | **0.574 ± 0.091** |
+| physiofm_rand | 47.9 ± 2.7 | 11.1 | 84.7 | 0.574 ± 0.091 |
 
-**pc − rand: +21.5 balanced-acc, +0.34 AUC** (random-init ≈ chance). **pc ≈ raw_de** (AUC 0.916
-vs 0.913; pc trades sensitivity for specificity).
+The subset showed pc−rand **+0.34 AUC** (random ≈ chance) — **an artifact of a few easy
+patients**. On the full corpus random-init recovers to AUC 0.74 (more patients → the random
+encoder + logreg has far more training data), shrinking the gap to +0.082. A cautionary tale
+about small-subset previews.
 
-## 5. Interpretation — agent's reading
+## 5. Interpretation — agent's reading *(full corpus)*
 
-**The pre-registered prediction is confirmed, strongly, and it rescues the cross-task claim.**
-On seizure, PC pretraining is *essential*: the matched random-init encoder is near-chance
-(AUC 0.574) while the PC-pretrained encoder reaches AUC 0.916 — a **+0.34 AUC / +21.5 bal-acc**
-gap. This is the sleep pattern (PC ≫ random on a sequence-temporal task), the mirror of the
-motor-imagery and emotion nulls. So the thesis now has **two independent dynamic-task wins
-(sleep, seizure)** vs **two spatial-spectral nulls (emotion, MI)** — a genuine, defensible
-cross-task foundation-model result rather than "SSL helps sleep."
+**The pre-registered prediction is confirmed — PC > random on seizure — but the honest,
+full-corpus effect is modest, not the dramatic subset number.** On all 24 patients the
+PC-pretrained encoder beats matched random-init by **+8.1 bal-acc / +0.082 AUC** and slightly
+beats the raw-DE ceiling (+3.1 bal-acc). This is still the sleep pattern (PC > random on a
+sequence-temporal task, unlike the emotion/MI nulls), so the **cross-task claim holds**: PC helps
+on both sequence-temporal tasks (sleep, seizure), null on both spatial-spectral tasks
+(emotion, MI). But the magnitude here (+8 bal-acc) is sleep-like (+10), not the subset's +21.
 
-The FM **matches but does not beat** the raw-DE ceiling on AUC/bal-acc (raw per-epoch band power
-is already a strong seizure feature), trading sensitivity (43 vs 54) for specificity (96 vs 85).
-So, as on sleep, the FM's headline value is the huge **pretraining gain over random** (and
-expected label-efficiency), not peak over a strong linear baseline.
+**Key lesson: the 5-patient subset badly overstated the effect.** Random-init went from
+near-chance (0.57 AUC) on the easy subset to 0.74 on the full corpus — the pretraining "rescue"
+was mostly a small-sample artifact. The trustworthy number is the full-corpus +0.082 AUC, with
+a large ±0.20 per-patient spread that a paired test must address before claiming significance.
 
-**Caveats:** 5-patient subset, single seed, LOPO on few patients (hence the ±14.6 bal-acc
-spread). Needs the full 24-patient corpus + multi-seed + a label-efficiency curve to be
-paper-grade — but the direction is unambiguous.
+**Open (in progress):** the **label-efficiency curve** is the decisive follow-up — if random-init
+only caught up because it had abundant data, PC should re-open a gap at low labels (as on sleep).
+That, plus multi-seed and a paired per-patient test, determines how strong the seizure leg is.
+
+**Caveats:** single seed; LOPO with huge inter-patient variance (±0.20 AUC); a paired
+per-patient significance test still owed.
 
 ## 6. ✅ Your verification — *(reserved for Mahdiar)*
 
