@@ -25,9 +25,10 @@ SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e6e5e2"
 SHUFFLE = {"PhysioFM-S": (72.6, 67.4, C_PC),
            "raw-DE": (67.9, 67.9, C_RAW),
            "random-init": (62.9, 61.2, C_RAND)}
-# (B) emotion smoothing flip — SEED-IV, EXP-0001 (F1). gap = PC − random (accuracy pts)
-FLIP = [("LDS-smoothed DE\n(0.1% within-trial variance)", 5.43),
-        ("un-smoothed DE\n(17.2% within-trial variance)", 12.70)]
+# (B) emotion smoothing flip — SEED-IV, SAME trials/labels/folds, only the feature
+# variant changes. Matched protocol, 3-seed means (scripts/run_parity.sh).
+FLIP = [("LDS-smoothed DE\n(0.08% within-trial variance)", 2.38),
+        ("un-smoothed DE\n(17.6% within-trial variance)", 11.01)]
 # (C) seizure paired per-patient effects (AUC diff), EXP-0015 §4c
 PAIRED = [  # label, diff, p, wins, n
     ("vs random-init\n@ 1% labels",   0.105, 0.0002, 22),
@@ -76,7 +77,7 @@ def main():
                 xy=(0.42, 70.6), fontsize=8.3, color=INK2, style="italic")
     ax.set_xticks(xs); ax.set_xticklabels(list(SHUFFLE), fontsize=9, color=INK2)
     ax.set_ylim(55, 77); ax.set_ylabel("Sleep accuracy (%)", fontsize=9.5, color=INK2)
-    ax.set_title("A · Order-shuffle control (sleep)", fontsize=11, color=INK,
+    ax.set_title("A · Order-shuffle control (sleep, per-epoch labels)", fontsize=11, color=INK,
                  fontweight="bold", loc="left", pad=10)
     _style(ax); ax.grid(False, axis="x")
     solid = matplotlib.patches.Patch(fc=INK2, ec=SURFACE, label="normal")
@@ -93,13 +94,13 @@ def main():
     for i, v in enumerate(vals):
         ax.annotate(f"+{v:.1f}", (i, v), xytext=(0, 5), textcoords="offset points",
                     ha="center", fontsize=10.5, fontweight="bold", color=INK)
-    ax.annotate("", xy=(1, 11.6), xytext=(0, 6.4),
+    ax.annotate("", xy=(1, 10.0), xytext=(0, 3.4),
                 arrowprops=dict(arrowstyle="->", color=INK2, lw=1.4,
                                 connectionstyle="arc3,rad=0.22"), zorder=5)
-    ax.annotate("restore the dynamics,\nthe PC gain returns (2.3×)",
-                xy=(0.30, 9.6), fontsize=8.3, color=INK2, style="italic")
+    ax.annotate("restore the dynamics,\nthe PC gain returns (4.6×)",
+                xy=(0.28, 8.2), fontsize=8.3, color=INK2, style="italic")
     ax.set_xticks([0, 1]); ax.set_xticklabels(labs, fontsize=8.5, color=INK2)
-    ax.set_ylim(0, 15)
+    ax.set_ylim(0, 13.5)
     ax.set_ylabel("PC − random-init (accuracy points)", fontsize=9.5, color=INK2)
     ax.set_title("B · Smoothing flip (emotion, SEED-IV)", fontsize=11, color=INK,
                  fontweight="bold", loc="left", pad=10)
@@ -133,8 +134,8 @@ def main():
                 arrowprops=dict(arrowstyle="->", color=C_NS, lw=1.0,
                                 connectionstyle="arc3,rad=0.2"))
 
-    fig.suptitle("The mechanism: the gain is temporal — destroy the dynamics and it disappears; "
-                 "restore them and it returns",
+    fig.suptitle("The mechanism: on per-epoch-label tasks the gain is temporal — destroy the dynamics "
+                 "and it disappears; restore them and it returns",
                  fontsize=12.5, color=INK, fontweight="bold", x=0.045, ha="left", y=0.945)
 
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)

@@ -29,9 +29,16 @@ SLEEP = {"pc": [70.94, 72.51, 72.64, 72.75, 72.65, 72.63],
 SEIZ = {"pc": [0.797, 0.809, 0.808, 0.814, 0.820, 0.822],
         "raw": [0.731, 0.790, 0.795, 0.803, 0.804, 0.806],
         "rand": [0.692, 0.740, 0.734, 0.740, 0.737, 0.740]}
-# (C) PC - random at full labels, in each task's native accuracy points
-GAIN = [("Sleep\n(temporal)", 9.77), ("Seizure\n(temporal)", 8.10),
-        ("Motor imagery\n(spectral)", -1.27), ("Emotion\n(spectral)", -3.18)]
+# (C) PC - random at full labels, in each task's native accuracy points.
+# ALL numbers now come from the matched single-dataset-pretraining protocol
+# (scripts/run_parity.sh); the earlier emotion figure used combined-corpus
+# pretraining, which is why its gain was reported as negative. 3-seed means where
+# available (sleep, both emotion variants); single seed for seizure and MI.
+GAIN = [("Sleep", 14.52, "1127"),
+        ("Emotion\nun-smooth.", 11.01, "36"),
+        ("Seizure", 8.10, "1800"),
+        ("Emotion\nsmoothed", 2.38, "36"),
+        ("Motor\nimagery", -1.27, "13")]
 
 
 def _style(ax):
@@ -74,7 +81,7 @@ def main():
     args = ap.parse_args()
 
     fig, axes = plt.subplots(1, 3, figsize=(15.5, 4.6), facecolor=SURFACE)
-    fig.subplots_adjust(left=0.05, right=0.965, top=0.80, bottom=0.16, wspace=0.55)
+    fig.subplots_adjust(left=0.05, right=0.965, top=0.80, bottom=0.19, wspace=0.55)
 
     # (A) sleep
     _curve(axes[0], SLEEP, "Accuracy (%)", "A · Sleep staging — label efficiency",
@@ -86,29 +93,31 @@ def main():
            lambda v, _: f"{v:.2f}", {"pc": 6, "raw": -2, "rand": -6})
     axes[1].set_ylim(0.66, 0.845)
 
-    # (C) pretraining gain — diverging by polarity, zero reference
+    # (C) pretraining gain — a graded spectrum, not a binary split
     ax = axes[2]
     names = [g[0] for g in GAIN]
     vals = [g[1] for g in GAIN]
+    nseed = [g[2] for g in GAIN]
     xs = np.arange(len(vals))
     cols = [C_POS if v > 0 else C_NEG for v in vals]
-    ax.bar(xs, vals, width=0.62, color=cols, edgecolor=SURFACE, linewidth=2.0, zorder=3)
+    ax.bar(xs, vals, width=0.66, color=cols, edgecolor=SURFACE, linewidth=2.0, zorder=3)
     ax.axhline(0, color=INK2, lw=1.2, zorder=4)
-    for x, v in zip(xs, vals):
-        ax.annotate(f"{v:+.1f}", xy=(x, v), xytext=(0, 5 if v > 0 else -13),
+    for x, v, ns in zip(xs, vals, nseed):
+        ax.annotate(f"{v:+.1f}", xy=(x, v), xytext=(0, 5 if v > 0 else -14),
                     textcoords="offset points", ha="center", fontsize=9.5,
                     fontweight="bold", color=INK)
+        ax.annotate(ns, xy=(x, 0), xytext=(0, 6 if v <= 0 else -14), textcoords="offset points",
+                    ha="center", fontsize=7.2, color=INK2, alpha=0.8)
     ax.set_xticks(xs)
-    ax.set_xticklabels(names, fontsize=8.8, color=INK2)
+    ax.set_xticklabels(names, fontsize=8.4, color=INK2)
     ax.set_ylabel("PC − random-init (accuracy points)", fontsize=9.5, color=INK2)
-    ax.set_title("C · Pretraining gain: temporal vs spectral", fontsize=11,
+    ax.set_title("C · Pretraining gain — a graded spectrum", fontsize=11,
                  color=INK, fontweight="bold", loc="left", pad=10)
-    ax.set_ylim(-6, 13)
+    ax.set_ylim(-5, 18)
     _style(ax)
     ax.grid(False, axis="x")
-    ax.annotate("PC pretraining helps", xy=(0.5, 11.4), fontsize=8.5, color=C_POS,
-                ha="center", style="italic")
-    ax.annotate("null", xy=(2.5, -5.0), fontsize=8.5, color=C_NEG, ha="center", style="italic")
+    ax.annotate("median sequence length shown under each bar", xy=(2.0, 16.6),
+                fontsize=7.6, color=INK2, ha="center", style="italic")
 
     fig.suptitle("Predictive-coding pretraining pays off in proportion to a task's temporal structure — "
                  "and most where labels are scarce",

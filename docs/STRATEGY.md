@@ -75,17 +75,23 @@ whole edge is temporal). *(9-subj preliminary, superseded: pc 68.8 / raw 72.1 / 
 > on sequence-temporal tasks (**sleep**: +10 pts over random & beats the linear ceiling;
 > **seizure**: +0.082 AUC over random, paired p=0.006 — and, while it only *ties* the linear
 > ceiling at full labels, it **significantly beats it once labels are scarce**, needing just 5%
-> of labels to match the ceiling trained on 100%), **negligible on spatial-spectral tasks**
-> (emotion and motor imagery, both characterized mechanistically), and concentrated in the
+> of labels to match the ceiling trained on 100%), **negligible where the signal is static or
+> the sequence is very short** (LDS-smoothed emotion, motor imagery), and concentrated in the
 > **low-label / transfer** regime where foundation models are supposed to help. We also correct
 > an inflated emotion SSL benchmark (PC-SSL, ~80% leakage) that the sub-field has been chasing.
 
-The 2×2 that defines the contribution: PC pretraining helps on **sleep** & **seizure**
-(sequence-temporal), is a **null** on **emotion** & **motor imagery** (spatial-spectral) — a
-clean, mechanistic "when and why temporal SSL helps EEG," now with two positives and two
-negatives rather than a single data point.
+**The gain is a graded spectrum, not a 2×2** ([[EXP-0016]], one matched protocol throughout):
+sleep **+14.5**, un-smoothed emotion **+11.0**, seizure **+8.1**, smoothed emotion **+2.4**,
+motor imagery **−1.3** accuracy points over matched random-init. *(An earlier −3.2 for smoothed
+emotion was a protocol artifact — those models were pretrained on the combined SEED corpus while
+every other task used its own data; matched pretraining gives +2.4.)*
 
-This makes the emotion null a **feature** (rigorous "when/why it works"), not a failure.
+Two caveats we hold ourselves to: the **order-shuffle control is valid only for per-epoch-label
+tasks** (on trial-constant-label tasks shuffling acts as denoising and can *help*), and **simple
+data-only predictability scores do not predict the gain** — motor imagery has the highest
+k-step predictability yet gains nothing.
+
+This makes the low-gain settings a **feature** (rigorous "when/why it works"), not a failure.
 
 ## 6. How to make Option A work — the plan
 

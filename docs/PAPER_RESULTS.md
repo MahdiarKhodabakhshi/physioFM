@@ -72,17 +72,33 @@ degrades three times as fast; **PC with 5% of labels (AUC 0.809) matches raw-DE 
 (0.806)** — ≈20× label efficiency (Figure 1B). PC does *not* significantly beat raw-DE at full
 labels (paired p=0.46, 11/24 — a tie), but does at 1% labels (p=0.017, 18/24) (Figure 2C).
 
-## 5. The mechanism: temporal structure, not spectral structure
+## 5. The mechanism: temporal structure, graded
 
-The four tasks form a clean 2×2 (Figure 1C). Predictive-coding pretraining helps in proportion
-to a task's **sequence-level temporal structure**: it beats random-init on the two
-sequence-temporal tasks — **sleep** (+9.8) and **seizure** (+0.082 AUC) — and is null-to-negative
-on the two spatial-spectral tasks — **motor imagery** (−1.3; ERD is a static power pattern) and
-**smoothed emotion** (−3.2). The same architecture, objective, and harness are used throughout;
-the only variable is whether the discriminative signal evolves over the feature sequence. The
-sleep shuffle control (Figure 2A) and the emotion smoothing flip (Figure 2B) demonstrate this
-causally in both directions — remove the dynamics and the gain disappears; restore them and it
-returns.
+Evaluated under one matched protocol (same architecture, objective, harness, and
+single-dataset pretraining throughout), the pretraining gain forms a **graded spectrum**
+rather than a binary split (Figure 1C): **sleep +14.5**, **un-smoothed emotion +11.0**,
+**seizure +8.1**, **smoothed emotion +2.4**, **motor imagery −1.3** accuracy points over
+matched random-init. The gain tracks how much of the discriminative signal lives in the
+*evolution* of the feature sequence rather than in any single window.
+
+Two interventions support this causally. The **smoothing flip** (Figure 2B) varies temporal
+structure while holding trials, labels, folds, and architecture fixed: LDS smoothing leaves
+0.08% of the per-(channel,band) variance within-trial and the gain is +2.4; the un-smoothed
+features of the *same recordings* carry 17.6% and the gain is +11.0. The **order-shuffle
+control** (Figure 2A) scrambles window order before encoding: on sleep the PC advantage
+collapses to the raw-DE level (72.6 → 67.4).
+
+*Scope of the shuffle control.* It is interpretable only where labels are **per-epoch**
+(sleep, seizure). Where labels are **trial-constant** (emotion, motor imagery) every window
+shares one label, so shuffling lets each causal position aggregate a random sample of the
+whole trial — an effective denoising that can *raise* accuracy (+7.4 on un-smoothed emotion).
+We therefore restrict the shuffle argument to per-epoch-label tasks.
+
+A caution for future work: simple data-only measures of temporal structure do **not**
+predict the gain. Motor imagery has the highest k-step predictability of all five settings
+(τ = 0.27) yet gains nothing, while sleep has the lowest τ among the positive tasks and gains
+the most. Predictability that a *linear* model already captures appears not to be the kind
+predictive-coding pretraining can convert into linear-probe-accessible information.
 
 ## 6. Positioning
 
