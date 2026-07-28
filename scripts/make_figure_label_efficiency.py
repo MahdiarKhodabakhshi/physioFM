@@ -33,12 +33,12 @@ SEIZ = {"pc": [0.797, 0.809, 0.808, 0.814, 0.820, 0.822],
 # ALL numbers now come from the matched single-dataset-pretraining protocol
 # (scripts/run_parity.sh); the earlier emotion figure used combined-corpus
 # pretraining, which is why its gain was reported as negative. 3-seed means where
-# available (sleep, both emotion variants); single seed for seizure and MI.
+# available (sleep, both emotion variants, MI); single seed for seizure.
 GAIN = [("Sleep", 14.52, "1127"),
         ("Emotion\nun-smooth.", 11.01, "36"),
         ("Seizure", 8.10, "1800"),
         ("Emotion\nsmoothed", 2.38, "36"),
-        ("Motor\nimagery", -1.27, "13")]
+        ("Motor\nimagery", -1.84, "13")]
 
 
 def _style(ax):

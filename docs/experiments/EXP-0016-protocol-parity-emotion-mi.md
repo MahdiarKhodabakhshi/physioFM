@@ -9,7 +9,7 @@ phase: phase3
 verified: no
 tags: parity, emotion, motor-imagery, shuffle-control, label-efficiency, correction
 commits:
-verdict: TWO CORRECTIONS. (1) The emotion "null" was partly a PROTOCOL ARTIFACT — the old −3.2 gain came from combined-corpus pretraining while every other task was pretrained on its own data; under matched single-dataset pretraining (3 seeds) smoothed emotion is +2.38, a weak POSITIVE. The 4-task picture is therefore a GRADED SPECTRUM (sleep +14.5, emotion-unsmoothed +11.0, seizure +8.1, emotion-smoothed +2.4, MI −1.3), not a clean 2×2. (2) The order-shuffle control is CONFOUNDED on trial-constant-label tasks: on un-smoothed emotion shuffling IMPROVED PC by +7.4 (53.5→60.8), because with one label per trial, shuffling lets each causal position sample the whole trial (better pooling). The control is only interpretable for per-epoch-label tasks (sleep, seizure). Label-efficiency replicates on emotion (PC > raw-DE at 1% labels on both variants).
+verdict: TWO CORRECTIONS. (1) The emotion "null" was partly a PROTOCOL ARTIFACT — the old −3.2 gain came from combined-corpus pretraining while every other task was pretrained on its own data; under matched single-dataset pretraining (3 seeds) smoothed emotion is +2.38, a weak POSITIVE. The 4-task picture is therefore a GRADED SPECTRUM (sleep +14.5, emotion-unsmoothed +11.0, seizure +8.1, emotion-smoothed +2.4, MI −1.8), not a clean 2×2. (2) The order-shuffle control is CONFOUNDED on trial-constant-label tasks: on un-smoothed emotion shuffling IMPROVED PC by +7.4 (53.5→60.8), because with one label per trial, shuffling lets each causal position sample the whole trial (better pooling). The control is only interpretable for per-epoch-label tasks (sleep, seizure). Label-efficiency replicates on emotion (PC > raw-DE at 1% labels on both variants).
 ---
 
 # EXP-0016 — Protocol parity for emotion + motor imagery
@@ -59,7 +59,7 @@ Emotion: SEED-IV, both feature variants on *identical* trials/labels/folds — s
 | Emotion, un-smoothed | 36 | **+11.0** (3 seeds) |
 | Seizure | 1800 | **+8.1** (1 seed, bal-acc) |
 | Emotion, smoothed | 36 | **+2.4** (3 seeds) |
-| Motor imagery | 13 | **−1.3** (1 seed) |
+| Motor imagery | 13 | **−1.8** (3 seeds) |
 
 ### 3c. Label efficiency (replicates the sleep/seizure pattern on emotion)
 
