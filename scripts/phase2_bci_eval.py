@@ -48,14 +48,25 @@ def _load():
     return trials, subj, sess, y
 
 
-def extract_trial_model(model_dir, trials, device, batch_size=256):
-    """One mean-pooled encoder vector per trial. Returns X (N, d)."""
+def extract_trial_model(model_dir, trials, device, batch_size=256,
+                        shuffle_time=False, shuffle_seed=0):
+    """One mean-pooled encoder vector per trial. Returns X (N, d).
+
+    shuffle_time permutes each trial's DE windows BEFORE encoding — the pre-registered
+    NEGATIVE control. The encoder is causal, so each window's hidden state depends on
+    which windows precede it; scrambling order therefore changes the pooled feature IF
+    the encoder is using temporal context. Prediction for MI (a static spatial-spectral
+    task): ~no change, unlike sleep where shuffling erased the whole gain.
+    """
     import torch
 
     model, _ = load_model(model_dir, device)
     model.eval()
     mean, std = load_standardizer(model_dir / "standardizer.npz")
     seqs = [standardize(t.values, mean, std) for t in trials]
+    if shuffle_time:
+        rng = np.random.default_rng(shuffle_seed)
+        seqs = [s[rng.permutation(s.shape[0])] for s in seqs]
     feats = []
     with torch.no_grad():
         for b0 in range(0, len(seqs), batch_size):
@@ -71,35 +82,65 @@ def extract_trial_raw(trials):
                      for t in trials])
 
 
-def _fit_subject(X, subj, sess, y, s, classifier):
+def _fit_subject(X, subj, sess, y, s, classifier, label_frac=1.0, sseed=0):
     from sklearn.metrics import accuracy_score, cohen_kappa_score, f1_score
 
-    tr = (subj == s) & (sess == 1)
     te = (subj == s) & (sess == 2)
-    if tr.sum() == 0 or te.sum() == 0:
+    tr_idx = np.where((subj == s) & (sess == 1))[0]
+    if tr_idx.size == 0 or te.sum() == 0:
+        return None
+    if label_frac < 1.0:  # stratified subsample of the training session's trials
+        rng = np.random.default_rng(1000 * sseed + int(s))
+        parts = []
+        for c in np.unique(y[tr_idx]):
+            idx_c = tr_idx[y[tr_idx] == c]
+            n = max(1, int(round(label_frac * idx_c.size)))
+            parts.append(rng.choice(idx_c, size=min(n, idx_c.size), replace=False))
+        tr_idx = np.concatenate(parts)
+    if len(np.unique(y[tr_idx])) < 2:
         return None
     clf = CLASSIFIERS[classifier]()
-    clf.fit(X[tr], y[tr])
+    clf.fit(X[tr_idx], y[tr_idx])
     pred = clf.predict(X[te])
-    return (accuracy_score(y[te], pred),
+    return (int(s),
+            accuracy_score(y[te], pred),
             f1_score(y[te], pred, average="macro", zero_division=0),
             cohen_kappa_score(y[te], pred))
 
 
-def session_holdout_eval(X, subj, sess, y, classifier, n_jobs=-1):
+def session_holdout_eval(X, subj, sess, y, classifier, n_jobs=-1, fracs=(1.0,), subsample_seeds=3):
+    """Per-fraction session-holdout metrics (mean over subjects, seed-averaged)."""
+    from collections import defaultdict
+
     from joblib import Parallel, delayed
 
     subjects = sorted(set(subj.tolist()))
-    res = Parallel(n_jobs=n_jobs, max_nbytes="1M")(
-        delayed(_fit_subject)(X, subj, sess, y, s, classifier) for s in subjects
+    tasks = []
+    for frac in fracs:
+        seeds = [0] if frac >= 1.0 else list(range(subsample_seeds))
+        for s in subjects:
+            for sd in seeds:
+                tasks.append((frac, s, sd))
+    raw = Parallel(n_jobs=n_jobs, max_nbytes="1M")(
+        delayed(_fit_subject)(X, subj, sess, y, s, classifier, frac, sd) for (frac, s, sd) in tasks
     )
-    res = [r for r in res if r is not None]
-    a = np.array([r[0] for r in res]); f = np.array([r[1] for r in res]); k = np.array([r[2] for r in res])
-    return {"subjects": len(res),
-            "acc_mean": a.mean() * 100, "acc_std": a.std() * 100,
-            "f1_mean": f.mean() * 100, "f1_std": f.std() * 100,
-            "kappa_mean": k.mean(), "kappa_std": k.std(),
-            "acc_subj": (a * 100).tolist()}
+    bucket = defaultdict(lambda: defaultdict(list))  # frac -> subject -> [(acc,f1,kappa)]
+    for (frac, s, sd), r in zip(tasks, raw):
+        if r is not None:
+            bucket[frac][r[0]].append(r[1:])
+    out = {}
+    for frac in fracs:
+        per_subj = {s: np.mean(v, axis=0) for s, v in bucket[frac].items()}
+        a = np.array(list(per_subj.values())) if per_subj else np.zeros((0, 3))
+        out[frac] = {"subjects": len(per_subj),
+                     "acc_mean": a[:, 0].mean() * 100 if len(a) else 0.0,
+                     "acc_std": a[:, 0].std() * 100 if len(a) else 0.0,
+                     "f1_mean": a[:, 1].mean() * 100 if len(a) else 0.0,
+                     "f1_std": a[:, 1].std() * 100 if len(a) else 0.0,
+                     "kappa_mean": a[:, 2].mean() if len(a) else 0.0,
+                     "kappa_std": a[:, 2].std() if len(a) else 0.0,
+                     "per_subject": per_subj}
+    return out
 
 
 def main() -> None:
@@ -109,6 +150,11 @@ def main() -> None:
     ap.add_argument("--raw", action="store_true")
     ap.add_argument("--classifiers", nargs="+", default=["logreg"])
     ap.add_argument("--n_jobs", type=int, default=-1)
+    ap.add_argument("--label_fracs", type=float, nargs="+", default=[1.0])
+    ap.add_argument("--subsample_seeds", type=int, default=3)
+    ap.add_argument("--shuffle_time", action="store_true",
+                    help="negative control: scramble window order before encoding")
+    ap.add_argument("--shuffle_seed", type=int, default=0)
     ap.add_argument("--out_dir", default="results/phase3/f16")
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
@@ -125,31 +171,44 @@ def main() -> None:
     if args.raw:
         feats["raw_de"] = extract_trial_raw(trials)
     if args.pc_dir:
-        feats["physiofm_pc"] = extract_trial_model(Path(args.pc_dir), trials, device)
+        feats["physiofm_pc"] = extract_trial_model(
+            Path(args.pc_dir), trials, device, shuffle_time=args.shuffle_time, shuffle_seed=args.shuffle_seed)
     if args.rand_dir:
-        feats["physiofm_rand"] = extract_trial_model(Path(args.rand_dir), trials, device)
+        feats["physiofm_rand"] = extract_trial_model(
+            Path(args.rand_dir), trials, device, shuffle_time=args.shuffle_time, shuffle_seed=args.shuffle_seed)
     if not feats:
         raise SystemExit("nothing to evaluate")
 
     out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+    fracs = sorted(args.label_fracs)
     rows = []
     for name, X in feats.items():
         for clf in args.classifiers:
-            r = session_holdout_eval(X, subj, sess, y, clf, args.n_jobs)
-            LOG.info("RESULT %-14s %-8s acc=%.2f±%.2f f1=%.2f±%.2f kappa=%.3f±%.3f (%d subj)",
-                     name, clf, r["acc_mean"], r["acc_std"], r["f1_mean"], r["f1_std"],
-                     r["kappa_mean"], r["kappa_std"], r["subjects"])
-            rows.append((name, clf, r))
+            res = session_holdout_eval(X, subj, sess, y, clf, args.n_jobs, fracs, args.subsample_seeds)
+            for frac in fracs:
+                r = res[frac]
+                LOG.info("RESULT %-14s %-8s frac=%.2f acc=%.2f±%.2f f1=%.2f±%.2f kappa=%.3f±%.3f (%d subj%s)",
+                         name, clf, frac, r["acc_mean"], r["acc_std"], r["f1_mean"], r["f1_std"],
+                         r["kappa_mean"], r["kappa_std"], r["subjects"],
+                         ", SHUFFLED" if args.shuffle_time else "")
+                rows.append((name, clf, frac, r))
 
     with (out_dir / f"f16_bci{args.tag}.csv").open("w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["features", "classifier", "subjects", "acc_mean", "acc_std",
+        w.writerow(["features", "classifier", "label_frac", "subjects", "acc_mean", "acc_std",
                     "f1_mean", "f1_std", "kappa_mean", "kappa_std"])
-        for name, clf, r in rows:
-            w.writerow([name, clf, r["subjects"], f"{r['acc_mean']:.2f}", f"{r['acc_std']:.2f}",
-                        f"{r['f1_mean']:.2f}", f"{r['f1_std']:.2f}",
+        for name, clf, frac, r in rows:
+            w.writerow([name, clf, f"{frac:.2f}", r["subjects"], f"{r['acc_mean']:.2f}",
+                        f"{r['acc_std']:.2f}", f"{r['f1_mean']:.2f}", f"{r['f1_std']:.2f}",
                         f"{r['kappa_mean']:.3f}", f"{r['kappa_std']:.3f}"])
-    LOG.info("wrote %s (chance=25%%, 4 classes)", out_dir / f"f16_bci{args.tag}.csv")
+    with (out_dir / f"f16_bci{args.tag}_persubject.csv").open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["features", "classifier", "label_frac", "subject", "acc", "f1", "kappa"])
+        for name, clf, frac, r in rows:
+            for s, v in sorted(r["per_subject"].items()):
+                w.writerow([name, clf, f"{frac:.2f}", s, f"{v[0]*100:.4f}",
+                            f"{v[1]*100:.4f}", f"{v[2]:.4f}"])
+    LOG.info("wrote %s (+ per-subject; chance=25%%)", out_dir / f"f16_bci{args.tag}.csv")
 
 
 if __name__ == "__main__":
