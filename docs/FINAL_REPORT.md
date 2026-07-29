@@ -18,6 +18,21 @@ We built the proposed model and evaluated it on **5 EEG tasks / 7 settings** und
 
 ---
 
+## 0. Naming key (read this before the tables)
+
+Every row below is **our own model**; only the weight initialisation differs.
+
+| Label | Meaning |
+|---|---|
+| **PhysioFM (pretrained)** | our model **with** predictive-coding pretraining — the full proposed pipeline (`physiofm_pc` in the code) |
+| **PhysioFM (no pretrain)** | the **identical architecture**, randomly initialised — the control that isolates what pretraining contributes (`physiofm_rand`) |
+| **raw-DE (no model)** | no transformer at all: DE features straight into logistic regression — the baseline both must beat |
+
+⚠️ Do not confuse **PC-SSL** (the *prior work* we build on) with **PC** in our code, which abbreviates
+*predictive coding* and refers to **our own pretrained model**.
+
+---
+
 ## 1. The idea
 
 Combine two published results:
@@ -129,7 +144,7 @@ At this point the story appeared to be *"pretraining helps in proportion to temp
 
 Our encoder outputs 256-d; raw DE is 10–310-d. So we compared against **raw DE pushed through a *random* 256-d projection** — same dimensionality, no learning.
 
-| Task | raw-DE | random 256-d proj | **PC (ours)** | **PC − control** |
+| Task | raw-DE | random 256-d proj | **PhysioFM (pretrained)** | **benefit over control** |
 |---|---:|---:|---:|---:|
 | Sleep | 67.86 | 69.30 | 72.63 | **+3.33** ✅ |
 | Emotion | 62.75 | 60.17 | 59.99 | **−0.18** ❌ |
@@ -141,15 +156,15 @@ Our encoder outputs 256-d; raw DE is 10–310-d. So we compared against **raw DE
 
 We froze the encoder; all published competitors fine-tune end-to-end.
 
-| Task | arm | frozen | fine-tuned | Δ |
+| Task | model | frozen | fine-tuned | Δ |
 |---|---|---:|---:|---:|
-| Sleep | PC | 72.63 | 75.37 | +2.74 |
-| Sleep | random-init | 62.86 | 73.18 | **+10.32** |
-| Seizure | PC | 75.51 | 78.66 | +3.15 |
-| Seizure | random-init | 67.41 | **80.21** | **+12.80** |
+| Sleep | PhysioFM (pretrained) | 72.63 | 75.37 | +2.74 |
+| Sleep | PhysioFM (no pretrain) | 62.86 | 73.18 | **+10.32** |
+| Seizure | PhysioFM (pretrained) | 75.51 | 78.66 | +3.15 |
+| Seizure | PhysioFM (no pretrain) | 67.41 | **80.21** | **+12.80** |
 
 ```
- PRETRAINING ADVANTAGE (PC − random-init)
+ PRETRAINING BENEFIT (PhysioFM pretrained − PhysioFM random-init)
 
  Sleep     frozen  +9.8  ████████████████████
            fine-t  +2.2  ████
@@ -214,9 +229,9 @@ The mechanism makes a falsifiable prediction: **seizure *prediction*** is the on
 
 | | bal-acc | AUC |
 |---|---:|---:|
-| raw-DE | 65.15 | 0.710 |
-| **physiofm_pc** | 66.79 | 0.769 |
-| **physiofm_rand** | **71.34** | **0.793** |
+| raw-DE (no model) | 65.15 | 0.710 |
+| **PhysioFM (pretrained)** | 66.79 | 0.769 |
+| **PhysioFM (no pretrain)** | **71.34** | **0.793** |
 
 > ❌ **Prediction refuted.** Random-init beat the pretrained model, even in the frozen regime that normally flatters pretraining.
 
@@ -226,7 +241,7 @@ The mechanism makes a falsifiable prediction: **seizure *prediction*** is the on
 
 ## 6. Final results table — all settings, one protocol
 
-| Task | metric | PC | rand | raw-DE | PC−rand | PC−raw |
+| Task | metric | PhysioFM<br>(pretrained) | PhysioFM<br>(no pretrain) | raw-DE<br>(no model) | pretrain<br>benefit | vs raw-DE |
 |---|---|---:|---:|---:|---:|---:|
 | Sleep | acc % | **73.03** | 58.51 | 67.86 | +14.52 | **+5.17** |
 | Seizure detection | bal-acc % | **75.51** | 67.41 | 72.37 | +8.10 | +3.14 (n.s.) |
