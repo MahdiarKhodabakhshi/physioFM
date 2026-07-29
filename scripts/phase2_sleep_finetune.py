@@ -72,7 +72,30 @@ def chunk(seq, lab, max_len):
     return [(seq[i:i + max_len], lab[i:i + max_len]) for i in range(0, seq.shape[0], max_len)]
 
 
-def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w):
+def mask_labels(chunks, frac, seed):
+    """Keep only `frac` of the TRAINING labels (stratified by class); the rest become -100
+    so the CE loss ignores them. Sequences stay intact, so the encoder still sees full
+    temporal context — only supervision is reduced. This is the fine-tuned analogue of the
+    frozen probe's label-fraction sweep."""
+    if frac >= 1.0:
+        return chunks
+    rng = np.random.default_rng(seed)
+    flat = np.concatenate([c[1] for c in chunks])
+    keep = np.zeros(len(flat), dtype=bool)
+    for c in np.unique(flat[flat >= 0]):
+        idx = np.where(flat == c)[0]
+        n = max(1, int(round(frac * len(idx))))
+        keep[rng.choice(idx, size=min(n, len(idx)), replace=False)] = True
+    out, off = [], 0
+    for x, l in chunks:
+        m = keep[off:off + len(l)]
+        off += len(l)
+        l2 = np.where(m, l, -100).astype(np.int64)
+        out.append((x, l2))
+    return out
+
+
+def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w, label_frac=1.0):
     import torch
     import torch.nn.functional as F
     from sklearn.metrics import accuracy_score, cohen_kappa_score, f1_score
@@ -84,6 +107,7 @@ def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w):
     w = torch.tensor(class_w, dtype=torch.float32, device=device)
 
     tr_chunks = [c for s, l in tr for c in chunk(s, l, max_len)]
+    tr_chunks = mask_labels(tr_chunks, label_frac, seed=42)
     for ep in range(epochs):
         enc.train(); head.train()
         order = np.random.default_rng(ep).permutation(len(tr_chunks))
@@ -107,7 +131,7 @@ def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w):
             torch.nn.utils.clip_grad_norm_(params, 1.0)
             opt.step(); opt.zero_grad()
             tot += float(loss.item()); n += 1
-        LOG.info("    epoch %d/%d  loss=%.4f", ep + 1, epochs, tot / max(n, 1))
+        pass  # per-epoch loss suppressed (many fractions x folds)
 
     enc.eval(); head.eval()
     preds, gts = [], []
@@ -133,6 +157,7 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--max_len", type=int, default=400, help="chunk long nights (0=whole night)")
     ap.add_argument("--k", type=int, default=5)
+    ap.add_argument("--label_fracs", type=float, nargs="+", default=[1.0])
     ap.add_argument("--out_csv", default="results/phase3/f13/f13_sleep_finetune.csv")
     args = ap.parse_args()
 
@@ -157,21 +182,20 @@ def main() -> None:
         cnt = np.bincount(allc[allc >= 0], minlength=N_CLASSES).astype(np.float64)
         class_w = (cnt.sum() / (N_CLASSES * np.maximum(cnt, 1))).tolist()
 
-        accs, f1s, kaps = [], [], []
-        for fi, te_subj in enumerate(folds):
-            te_m = np.isin(subjects, te_subj)
-            tr = [(seqs[i], labels[i]) for i in range(len(trials)) if not te_m[i]]
-            te = [(seqs[i], labels[i]) for i in range(len(trials)) if te_m[i]]
-            LOG.info("  %s fold %d/%d (train %d rec, test %d rec)", arm, fi + 1, args.k, len(tr), len(te))
-            a, f, kp = run_fold(ckpt, tr, te, args.mode, args.epochs, args.lr,
-                                args.batch, args.max_len, device, class_w)
-            LOG.info("  %s fold %d -> acc=%.2f f1=%.2f kappa=%.3f", arm, fi + 1, a, f, kp)
-            accs.append(a); f1s.append(f); kaps.append(kp)
-        LOG.info("RESULT %-14s mode=%s acc=%.2f±%.2f f1=%.2f±%.2f kappa=%.3f±%.3f (%d folds)",
-                 arm, args.mode, np.mean(accs), np.std(accs), np.mean(f1s), np.std(f1s),
-                 np.mean(kaps), np.std(kaps), len(accs))
-        rows.append((arm, args.mode, len(accs), np.mean(accs), np.std(accs),
-                     np.mean(f1s), np.std(f1s), np.mean(kaps), np.std(kaps)))
+        for frac in sorted(args.label_fracs):
+            accs, f1s, kaps = [], [], []
+            for fi, te_subj in enumerate(folds):
+                te_m = np.isin(subjects, te_subj)
+                tr = [(seqs[i], labels[i]) for i in range(len(trials)) if not te_m[i]]
+                te = [(seqs[i], labels[i]) for i in range(len(trials)) if te_m[i]]
+                a, f, kp = run_fold(ckpt, tr, te, args.mode, args.epochs, args.lr,
+                                    args.batch, args.max_len, device, class_w, frac)
+                accs.append(a); f1s.append(f); kaps.append(kp)
+            LOG.info("RESULT %-14s mode=%s frac=%.2f acc=%.2f±%.2f f1=%.2f±%.2f kappa=%.3f±%.3f (%d folds)",
+                     arm, args.mode, frac, np.mean(accs), np.std(accs), np.mean(f1s), np.std(f1s),
+                     np.mean(kaps), np.std(kaps), len(accs))
+            rows.append((arm, f"{args.mode}_frac{frac:g}", len(accs), np.mean(accs), np.std(accs),
+                         np.mean(f1s), np.std(f1s), np.mean(kaps), np.std(kaps)))
 
     out = Path(args.out_csv); out.parent.mkdir(parents=True, exist_ok=True)
     new = not out.exists()
