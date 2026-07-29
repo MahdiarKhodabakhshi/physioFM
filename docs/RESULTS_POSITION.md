@@ -123,10 +123,20 @@ Fine-tuning gains the pretrained model ~3 points and the random-init model ~10�
 labels, training the same architecture from scratch matches or beats pretraining. **Claim 1
 below must be stated as a frozen-encoder result.**
 
-**⚠️ UNVERIFIED — the label-efficiency claim (§4) was measured with the frozen probe only.**
-It must be re-tested under fine-tuning at low label fractions before publication. If PC still
-beats random-init at 1–5% labels when both are fine-tuned, the standard SSL story holds; if
-not, there is no positive full-protocol result. This is the decisive open experiment.
+**⚠️ RESOLVED, and it costs us the headline.** The label-efficiency sweep re-run under
+fine-tuning on sleep ([[EXP-0017]] §4d):
+
+| labels | frozen gap (PC − rand) | fine-tuned gap |
+| ---: | ---: | ---: |
+| 1% | +12.74 | **+1.90** |
+| 10% | +10.75 | +2.44 |
+| 100% | +9.77 | +2.19 |
+
+Pretraining keeps a **real, consistent ~2-point advantage at every budget** — a genuine
+positive result. But the **widening-as-labels-shrink signature is a frozen-probe artifact**
+and must be dropped from the paper. §4 below should be read as a *frozen-encoder* result.
+Under the full protocol the honest claim is "~2 points on sleep, flat across label budgets";
+seizure's full-label fine-tuned gap was −1.55, and its low-label sweep is still owed.
 
 **Cannot claim:**
 1. ❌ State-of-the-art on any task. We are 8–12 points below on sleep, ~0.1 AUC below on cross-patient seizure.

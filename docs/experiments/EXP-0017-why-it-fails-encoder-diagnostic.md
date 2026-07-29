@@ -9,7 +9,7 @@ verified: no
 phase: phase3
 tags: diagnostic, root-cause, ablation, label-granularity, negative-result
 commits:
-verdict: ROOT CAUSE FOUND. Against a DIMENSION-MATCHED control (raw DE pushed through a random 256-d nonlinear projection), predictive-coding pretraining adds real information ONLY on sleep (+3.3); on emotion it is a wash (−0.2) and on motor imagery it is actively harmful (−9.3). Part of the sleep "win" over raw-DE is just dimensionality (random projection alone gives +1.4). The splitting variable is LABEL GRANULARITY, not temporal structure per se: where labels are PER-EPOCH (sleep, seizure) temporal context informs the label and the causal encoder helps; where labels are TRIAL-CONSTANT (emotion, MI) temporal ordering is irrelevant to the label, so a causal sequence model supplies the wrong inductive bias and destroys per-window spectral detail. Concat [raw‖PC] beats raw only on sleep (+5.4); on emotion it ties (−0.3) and on MI it hurts (−7.3). SEPARATELY AND MORE SERIOUSLY, end-to-end fine-tuning collapses the pretraining advantage on BOTH per-epoch tasks: sleep +9.8->+2.2, seizure +8.1->-1.6 (random-init fine-tuned BEATS pretrained, 80.2 vs 78.7 bal-acc). At full labels the pretraining benefit is an artifact of FREEZING the encoder. Since every label-efficiency result was computed frozen, the low-label claim must be re-tested under fine-tuning — that is now the decisive experiment. Actionable: the method is matched to per-epoch-label tasks; for trial-constant tasks a permutation-invariant/bidirectional readout is the right architecture, not a causal one.
+verdict: ROOT CAUSE FOUND. Against a DIMENSION-MATCHED control (raw DE pushed through a random 256-d nonlinear projection), predictive-coding pretraining adds real information ONLY on sleep (+3.3); on emotion it is a wash (−0.2) and on motor imagery it is actively harmful (−9.3). Part of the sleep "win" over raw-DE is just dimensionality (random projection alone gives +1.4). The splitting variable is LABEL GRANULARITY, not temporal structure per se: where labels are PER-EPOCH (sleep, seizure) temporal context informs the label and the causal encoder helps; where labels are TRIAL-CONSTANT (emotion, MI) temporal ordering is irrelevant to the label, so a causal sequence model supplies the wrong inductive bias and destroys per-window spectral detail. Concat [raw‖PC] beats raw only on sleep (+5.4); on emotion it ties (−0.3) and on MI it hurts (−7.3). SEPARATELY AND MORE SERIOUSLY, end-to-end fine-tuning collapses the pretraining advantage on BOTH per-epoch tasks: sleep +9.8->+2.2, seizure +8.1->-1.6 (random-init fine-tuned BEATS pretrained, 80.2 vs 78.7 bal-acc). At full labels the pretraining benefit is an artifact of FREEZING the encoder. The decisive follow-up is done (4d): under fine-tuning PC keeps a REAL but modest advantage at every label budget on sleep (+1.9 to +2.4), so this is a positive result — but the label-efficiency SIGNATURE (gap widening as labels shrink: +9.8->+12.7 frozen) does NOT survive; fine-tuned the gap is FLAT. The 'advantage grows when labels are scarce' claim must be dropped. Actionable: the method is matched to per-epoch-label tasks; for trial-constant tasks a permutation-invariant/bidirectional readout is the right architecture, not a causal one.
 ---
 
 # EXP-0017 — Why it fails: encoder diagnostic
@@ -144,6 +144,38 @@ claim must be re-tested **under fine-tuning at low label fractions** before it c
 published. If PC still beats random-init at 1–5% labels when both are fine-tuned, the
 standard SSL story holds and is the paper. If it does not, the project has no positive
 full-protocol result. **This is now the single most important experiment.**
+
+## 4d. THE DECISIVE TEST — does label efficiency survive fine-tuning? *(run 2026-07-29)*
+
+Sleep, both arms fine-tuned end-to-end, stratified masking of TRAINING labels (sequences
+intact, so the encoder keeps full temporal context — the setting most favourable to
+pretraining). `results/phase3/f13/f13_sleep_ft_labelcurve.csv`.
+
+| labels | FROZEN PC | rand | gap | FINE-TUNED PC | rand | gap |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1% | 70.94 | 58.20 | **+12.74** | 72.12 | 70.22 | **+1.90** |
+| 5% | 72.51 | 60.75 | +11.76 | 73.32 | 70.90 | +2.42 |
+| 10% | 72.64 | 61.89 | +10.75 | 73.85 | 71.41 | +2.44 |
+| 100% | 72.63 | 62.86 | +9.77 | 75.37 | 73.18 | +2.19 |
+
+**Answer: partially.** Pretraining does keep a **real, consistent advantage at every label
+budget** (+1.9 to +2.4) — so this is a genuine positive result, not a null. **But the
+label-efficiency SIGNATURE does not survive.** Frozen, the gap *widens* as labels shrink
+(+9.8 → +12.7), which is the classic SSL story we were going to headline. Fine-tuned, the
+gap is **flat** (+2.2 → +1.9): pretraining helps by a fixed ~2 points regardless of how many
+labels you have.
+
+**So the claim "the advantage grows as labels get scarce" is a frozen-probe artifact and must
+be dropped.** What survives is: *predictive-coding pretraining is worth a consistent ~2
+accuracy points on sleep under a full fine-tuning protocol.*
+
+Caveat on scale: 1% of sleep's 195k epochs is still ~2,000 labelled epochs, so "1% labels"
+is not an extreme low-data regime here in absolute terms. A truly small-label test would need
+a task with far fewer labels overall.
+
+**Still owed:** the same low-label fine-tuning sweep on **seizure**, where the full-label
+fine-tuned gap was *negative* (−1.55). If seizure also shows no low-label advantage, the
+surviving positive result is sleep-only and ~2 points.
 
 ## 5. What this implies (actionable)
 
