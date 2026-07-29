@@ -111,11 +111,22 @@ Headline framings this supports:
 4. A widely-cited emotion SSL benchmark is inflated by ~80% temporal-neighbour leakage ([[EXP-0008]]).
 5. It is **lightweight** — ~1–3M parameters vs ~100M+ for raw-signal EEG foundation models.
 
-**Must report with the frozen/fine-tuned distinction:** the +9.8 pretraining gain on sleep is a
-**frozen-encoder** result. Under end-to-end fine-tuning it shrinks to **+2.2** (PC 75.4 vs
-random-init 73.2), because random-init gains +10.3 from fine-tuning. Pretraining's value is
-concentrated where you cannot fine-tune or lack labels — consistent with §4. Reporting only the
-frozen number would be an evaluation-protocol artifact ([[EXP-0017]]).
+**⚠️ MAJOR CAVEAT — the pretraining gain is frozen-probe-specific.** Under end-to-end
+fine-tuning the advantage collapses on **both** per-epoch tasks ([[EXP-0017]] §4b–c):
+
+| Task | PC − random-init, frozen | PC − random-init, fine-tuned |
+| --- | ---: | ---: |
+| Sleep | +9.77 | **+2.19** |
+| Seizure (bal-acc) | +8.10 | **−1.55** (random-init *wins*: 80.2 vs 78.7) |
+
+Fine-tuning gains the pretrained model ~3 points and the random-init model ~10–13. So at full
+labels, training the same architecture from scratch matches or beats pretraining. **Claim 1
+below must be stated as a frozen-encoder result.**
+
+**⚠️ UNVERIFIED — the label-efficiency claim (§4) was measured with the frozen probe only.**
+It must be re-tested under fine-tuning at low label fractions before publication. If PC still
+beats random-init at 1–5% labels when both are fine-tuned, the standard SSL story holds; if
+not, there is no positive full-protocol result. This is the decisive open experiment.
 
 **Cannot claim:**
 1. ❌ State-of-the-art on any task. We are 8–12 points below on sleep, ~0.1 AUC below on cross-patient seizure.
