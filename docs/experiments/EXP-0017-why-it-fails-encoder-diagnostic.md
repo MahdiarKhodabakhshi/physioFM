@@ -9,7 +9,7 @@ verified: no
 phase: phase3
 tags: diagnostic, root-cause, ablation, label-granularity, negative-result
 commits:
-verdict: ROOT CAUSE FOUND. Against a DIMENSION-MATCHED control (raw DE pushed through a random 256-d nonlinear projection), predictive-coding pretraining adds real information ONLY on sleep (+3.3); on emotion it is a wash (−0.2) and on motor imagery it is actively harmful (−9.3). Part of the sleep "win" over raw-DE is just dimensionality (random projection alone gives +1.4). The splitting variable is LABEL GRANULARITY, not temporal structure per se: where labels are PER-EPOCH (sleep, seizure) temporal context informs the label and the causal encoder helps; where labels are TRIAL-CONSTANT (emotion, MI) temporal ordering is irrelevant to the label, so a causal sequence model supplies the wrong inductive bias and destroys per-window spectral detail. Concat [raw‖PC] beats raw only on sleep (+5.4); on emotion it ties (−0.3) and on MI it hurts (−7.3). SEPARATELY AND MORE SERIOUSLY, end-to-end fine-tuning collapses the pretraining advantage on BOTH per-epoch tasks: sleep +9.8->+2.2, seizure +8.1->-1.6 (random-init fine-tuned BEATS pretrained, 80.2 vs 78.7 bal-acc). At full labels the pretraining benefit is an artifact of FREEZING the encoder. The decisive follow-up is done (4d): under fine-tuning PC keeps a REAL but modest advantage at every label budget on sleep (+1.9 to +2.4), so this is a positive result — but the label-efficiency SIGNATURE (gap widening as labels shrink: +9.8->+12.7 frozen) does NOT survive; fine-tuned the gap is FLAT. The 'advantage grows when labels are scarce' claim must be dropped. Actionable: the method is matched to per-epoch-label tasks; for trial-constant tasks a permutation-invariant/bidirectional readout is the right architecture, not a causal one.
+verdict: ROOT CAUSE FOUND. Against a DIMENSION-MATCHED control (raw DE pushed through a random 256-d nonlinear projection), predictive-coding pretraining adds real information ONLY on sleep (+3.3); on emotion it is a wash (−0.2) and on motor imagery it is actively harmful (−9.3). Part of the sleep "win" over raw-DE is just dimensionality (random projection alone gives +1.4). The splitting variable is LABEL GRANULARITY, not temporal structure per se: where labels are PER-EPOCH (sleep, seizure) temporal context informs the label and the causal encoder helps; where labels are TRIAL-CONSTANT (emotion, MI) temporal ordering is irrelevant to the label, so a causal sequence model supplies the wrong inductive bias and destroys per-window spectral detail. Concat [raw‖PC] beats raw only on sleep (+5.4); on emotion it ties (−0.3) and on MI it hurts (−7.3). SEPARATELY AND MORE SERIOUSLY, end-to-end fine-tuning collapses the pretraining advantage on BOTH per-epoch tasks: sleep +9.8->+2.2, seizure +8.1->-1.6 (random-init fine-tuned BEATS pretrained, 80.2 vs 78.7 bal-acc). At full labels the pretraining benefit is an artifact of FREEZING the encoder. The decisive follow-up is done (4d): under fine-tuning PC keeps a REAL but modest advantage at every label budget on sleep (+1.9 to +2.4), so this is a positive result — but the label-efficiency SIGNATURE (gap widening as labels shrink: +9.8->+12.7 frozen) does NOT survive; fine-tuned the gap is FLAT. The 'advantage grows when labels are scarce' claim must be dropped. ROOT CAUSE (4e): the pretext IS learned (model beats persistence and ridge on 4/5 datasets, cutting MSE 40-65%) but pretext skill is ANTI-CORRELATED with downstream gain (best forecaster = MI = worst transfer; worst forecaster = sleep = best transfer). The failure is OBJECTIVE MISALIGNMENT: what makes DE predictable (smooth autocorrelation) is not what makes it discriminative. PC pretraining helps only when what is predictable is also what is discriminative — a property of the task, unfixable by scaling or tuning. Actionable: the method is matched to per-epoch-label tasks; for trial-constant tasks a permutation-invariant/bidirectional readout is the right architecture, not a causal one.
 ---
 
 # EXP-0017 — Why it fails: encoder diagnostic
@@ -176,6 +176,51 @@ a task with far fewer labels overall.
 **Still owed:** the same low-label fine-tuning sweep on **seizure**, where the full-label
 fine-tuned gap was *negative* (−1.55). If seizure also shows no low-label advantage, the
 surviving positive result is sleep-only and ~2 points.
+
+## 4e. ROOT CAUSE — the pretext is learned, but it is MISALIGNED *(run 2026-07-29)*
+
+`scripts/diagnose_pretext.py`. Does the model succeed at its own objective — predicting the
+next `p_out` DE windows — against persistence (zero-parameter copy) and a ridge linear map,
+under the identical masked-MSE metric?
+
+| Dataset | persistence | ridge | **model** | model/persist | model/ridge |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| sleep_edf | 3.885 | 3.355 | **2.336** | **0.60** | 0.70 |
+| chbmit | 36.05 | 30.21 | **20.66** | **0.57** | 0.68 |
+| seed_iv_raw | 120.31 | 205.76 | **52.72** | **0.44** | 0.26 |
+| bci_iv_2a | 62.02 | 45.91 | **21.64** | **0.35** | 0.47 |
+| seed_iv (smoothed) | **0.237** | 9.999 | 6.569 | 27.76 | 0.66 |
+
+**The pretraining works.** On 4 of 5 datasets the model beats both a zero-parameter copy
+baseline and a linear predictor, cutting persistence MSE by 40–65%. It is genuinely learning
+predictive temporal structure. (The exception is smoothed emotion, where the features are so
+autocorrelated that persistence is near-optimal at 0.237 and nothing beats it — the
+degenerate-pretext case F1 already identified.)
+
+**But pretext skill is ANTI-CORRELATED with downstream benefit:**
+
+| Task | pretext skill (model/persist, lower=better) | downstream gain |
+| --- | ---: | ---: |
+| Motor imagery | **0.35 (best forecaster)** | **−1.8 (worst)** |
+| Emotion un-smoothed | 0.44 | +11.0 |
+| Seizure | 0.57 | +8.1 frozen / −1.6 fine-tuned |
+| Sleep | **0.60 (worst of the four)** | **+14.5 frozen / +2.2 (best)** |
+
+The model that forecasts *best* transfers *worst*, and vice versa.
+
+**This is the root cause: OBJECTIVE MISALIGNMENT.** The failure is not that pretraining fails
+(it does not), nor that there is no temporal structure (there is, and it is learned). It is
+that **the structure that makes DE predictable is not the structure that makes it
+class-discriminative.** Forecasting rewards modelling the smooth, autocorrelated, slowly
+varying component of DE — precisely the part that carries little class information. On MI,
+DE is highly autocorrelated (easy to forecast) but that autocorrelation says nothing about
+which limb was imagined, so a model that excels at the pretext learns nothing useful. On
+sleep, what is predictable (sleep architecture — stage sequences and transitions) *is* the
+label, so pretext skill converts into downstream skill.
+
+**The rule:** *predictive-coding pretraining helps only when what is predictable is also what
+is discriminative.* That is a property of the task, not of the model, and it cannot be fixed
+by scaling, more seeds, or better tuning.
 
 ## 5. What this implies (actionable)
 
