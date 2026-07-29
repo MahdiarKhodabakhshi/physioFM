@@ -38,11 +38,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 LOG = logging.getLogger("f17_chbmit")
 
 LABELS_ARCH = "data/physiofm/de_features/chbmit_labels.npz"
+LABELS_OVERRIDE = None  # set by --labels
 
 
 def _load():
     trials = load_de_archive(ARCH["chbmit"])
-    labels, patient, file_idx, key = load_chbmit_labels(LABELS_ARCH)
+    labels, patient, file_idx, key = load_chbmit_labels(LABELS_OVERRIDE or LABELS_ARCH)
     if len(trials) != len(labels):
         raise SystemExit(f"archive/labels misalignment: {len(trials)} vs {len(labels)}")
     return trials, labels
@@ -136,7 +137,10 @@ def main() -> None:
     ap.add_argument("--subsample_seeds", type=int, default=3)
     ap.add_argument("--out_dir", default="results/phase3/f17")
     ap.add_argument("--tag", default="")
+    ap.add_argument("--labels", default=None, help="alternative per-epoch label archive")
     args = ap.parse_args()
+    if args.labels:
+        global LABELS_OVERRIDE; LABELS_OVERRIDE = args.labels
 
     import torch
 
@@ -148,6 +152,7 @@ def main() -> None:
              len(trials), n_ep, n_seiz, 100 * n_seiz / max(n_ep, 1),
              len({t.subject for t in trials}), trials[0].values.shape[1] * trials[0].values.shape[2])
 
+    keep_mask = None  # set after features are built (label -1 = excluded)
     feats = {}
     if args.raw:
         feats["raw_de"] = extract_raw_features(trials, labels)
@@ -157,6 +162,15 @@ def main() -> None:
         feats["physiofm_rand"] = extract_model_features(Path(args.rand_dir), trials, labels, device, args.batch_size)
     if not feats:
         raise SystemExit("nothing to evaluate")
+
+    # drop epochs the protocol excludes (SPH / ictal / post-ictal, label -1)
+    for name in list(feats):
+        X, subj, y = feats[name]
+        k = y >= 0
+        feats[name] = (X[k], subj[k], y[k])
+    LOG.info("after excluding label<0: %d epochs (%.1f%% positive)",
+             int((next(iter(feats.values()))[2] >= 0).sum()),
+             100 * float(next(iter(feats.values()))[2].mean()))
 
     out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     fracs = sorted(args.label_fracs)

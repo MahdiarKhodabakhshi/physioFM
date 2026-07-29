@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from physiofm.physiofm_s import PhysioFMS
 from physiofm.structured_data import collate_pad, load_standardizer, standardize
+import scripts.phase2_chbmit_eval as _ce
 from scripts.phase2_chbmit_eval import _load
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -101,6 +102,8 @@ def run_fold(ckpt, tr, te, epochs, lr, batch, max_len, device, pos_w):
                 lo = head(enc.encode(x.to(device), mask.to(device)))[0, :len(cl)]
                 P.append(torch.softmax(lo, -1)[:, 1].cpu().numpy()); G.append(cl)
     p = np.concatenate(P); g = np.concatenate(G)
+    k = g >= 0
+    p, g = p[k], g[k]
     if len(np.unique(g)) < 2:
         return None
     pred = (p >= 0.5).astype(int)
@@ -119,7 +122,10 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=8)
     ap.add_argument("--max_len", type=int, default=400)
     ap.add_argument("--out_csv", default="results/phase3/f17/f17_chbmit_finetune.csv")
+    ap.add_argument("--labels", default=None)
     args = ap.parse_args()
+    if args.labels:
+        _ce.LABELS_OVERRIDE = args.labels
 
     import torch
 
@@ -127,6 +133,7 @@ def main() -> None:
     trials, labels = _load()
     patients = np.array([t.subject for t in trials])
     uniq = sorted(set(patients.tolist()))
+    labels = [np.where(l < 0, -100, l) for l in labels]
     allc = np.concatenate(labels)
     pos_w = float((allc == 0).sum() / max((allc == 1).sum(), 1))
     LOG.info("CHB-MIT: %d recordings, %d patients, positive weight %.1f", len(trials), len(uniq), pos_w)
