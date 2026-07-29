@@ -9,7 +9,7 @@ verified: no
 phase: phase3
 tags: diagnostic, root-cause, ablation, label-granularity, negative-result
 commits:
-verdict: ROOT CAUSE FOUND. Against a DIMENSION-MATCHED control (raw DE pushed through a random 256-d nonlinear projection), predictive-coding pretraining adds real information ONLY on sleep (+3.3); on emotion it is a wash (−0.2) and on motor imagery it is actively harmful (−9.3). Part of the sleep "win" over raw-DE is just dimensionality (random projection alone gives +1.4). The splitting variable is LABEL GRANULARITY, not temporal structure per se: where labels are PER-EPOCH (sleep, seizure) temporal context informs the label and the causal encoder helps; where labels are TRIAL-CONSTANT (emotion, MI) temporal ordering is irrelevant to the label, so a causal sequence model supplies the wrong inductive bias and destroys per-window spectral detail. Concat [raw‖PC] beats raw only on sleep (+5.4); on emotion it ties (−0.3) and on MI it hurts (−7.3). Actionable: the method is matched to per-epoch-label tasks; for trial-constant tasks a permutation-invariant/bidirectional readout is the right architecture, not a causal one.
+verdict: ROOT CAUSE FOUND. Against a DIMENSION-MATCHED control (raw DE pushed through a random 256-d nonlinear projection), predictive-coding pretraining adds real information ONLY on sleep (+3.3); on emotion it is a wash (−0.2) and on motor imagery it is actively harmful (−9.3). Part of the sleep "win" over raw-DE is just dimensionality (random projection alone gives +1.4). The splitting variable is LABEL GRANULARITY, not temporal structure per se: where labels are PER-EPOCH (sleep, seizure) temporal context informs the label and the causal encoder helps; where labels are TRIAL-CONSTANT (emotion, MI) temporal ordering is irrelevant to the label, so a causal sequence model supplies the wrong inductive bias and destroys per-window spectral detail. Concat [raw‖PC] beats raw only on sleep (+5.4); on emotion it ties (−0.3) and on MI it hurts (−7.3). SEPARATELY, end-to-end fine-tuning on sleep lifts PC 72.6->75.4 but lifts random-init 62.9->73.2, collapsing the pretraining advantage from +9.8 to +2.2 — so most of the headline 'pretraining benefit' is a FROZEN-PROBE phenomenon, and fine-tuning closes only ~2.7 of the ~10-pt SOTA gap (the rest is the DE bottleneck). Actionable: the method is matched to per-epoch-label tasks; for trial-constant tasks a permutation-invariant/bidirectional readout is the right architecture, not a causal one.
 ---
 
 # EXP-0017 — Why it fails: encoder diagnostic
@@ -82,6 +82,37 @@ nothing. It is closer to: **PC helps when the LABEL depends on temporal position
 Sequence length is confounded with label granularity in our four tasks (sleep 1127 /
 seizure 1800 per-epoch vs emotion 36 / MI 13 trial-constant), so we cannot fully separate
 them with current data.
+
+## 4b. Follow-up: was the FROZEN PROBE the problem? *(run 2026-07-29)*
+
+`scripts/phase2_sleep_finetune.py`, same subject-disjoint folds, end-to-end fine-tuning
+(`--mode full`, 8 epochs, class-weighted CE, nights chunked to 400 epochs).
+
+| Arm | frozen probe | fine-tuned | Δ |
+| --- | ---: | ---: | ---: |
+| physiofm_pc | 72.63 | **75.37** (κ 0.672) | **+2.74** |
+| physiofm_rand | 62.86 | **73.18** (κ 0.645) | **+10.32** |
+| raw_de (linear) | 67.86 | n/a | |
+
+**PC advantage over random-init: +9.77 frozen → +2.19 fine-tuned.**
+**Gap to published SOTA (81–85%): −10.4 frozen → −7.6 fine-tuned.**
+
+Two consequences, both important:
+
+1. **Fine-tuning recovers only ~2.7 of the ~10-point SOTA gap.** So the frozen probe was
+   costing us something real but is *not* the main limiter. The residual ~7.6 points is most
+   plausibly the **DE feature bottleneck** (~600× compression before the model sees anything),
+   which only the raw-EEG leg ([[EXP-0013]]/F15) can address.
+2. **Most of the apparent "pretraining benefit" is a frozen-probe phenomenon.** Random-init
+   gains +10.3 from fine-tuning and nearly catches PC (73.18 vs 75.37). Bluntly: *training the
+   same architecture from scratch end-to-end (73.2) beats pretraining-then-freezing (72.6).*
+   With abundant labels and full fine-tuning, pretraining is worth only ~2 points.
+
+This does not invalidate the pretraining result — it **scopes** it. Pretraining matters when
+you cannot fine-tune, or do not have the labels to; that is exactly the label-efficiency
+regime where we already showed PC > raw-DE on 5/5 tasks. It does mean the headline
+"+9.8 from pretraining" must be reported as *frozen-encoder* and paired with the fine-tuned
+number, or a reviewer will (correctly) call it an artifact of the evaluation protocol.
 
 ## 5. What this implies (actionable)
 

@@ -53,7 +53,9 @@ before citing.*
 | AT-BiLSTM | 83.8 | 0.766 | raw-signal |
 | EEGSNet (CNN-LSTM) | 83.0 | 0.77 | raw-signal |
 | ULW-SleepNet ("ultra-lightweight") | 81.4 | — | raw-signal, multimodal |
-| **Ours (PhysioFM-S)** | **73.0** | **~0.63** | DE features, subject-disjoint |
+| **Ours (PhysioFM-S, fine-tuned)** | **75.4** | **0.672** | DE features, subject-disjoint |
+| Ours (PhysioFM-S, frozen probe) | 73.0 | ~0.63 | DE features, subject-disjoint |
+| Ours (random-init, fine-tuned) | 73.2 | 0.645 | **no pretraining** — nearly matches PC |
 | Ours (raw-DE linear baseline) | 67.9 | 0.575 | DE features |
 
 **Gap to SOTA: ~8–12 accuracy points.** Every stronger method operates on the **raw signal**;
@@ -108,6 +110,12 @@ Headline framings this supports:
 3. The gain scales with how much of the signal lives in the sequence: sleep +14.5, un-smoothed emotion +11.0, seizure +8.1, smoothed emotion +2.4, MI −1.8. The **smoothing flip** shows this causally on identical recordings (+2.4 → +11.0 by removing LDS smoothing).
 4. A widely-cited emotion SSL benchmark is inflated by ~80% temporal-neighbour leakage ([[EXP-0008]]).
 5. It is **lightweight** — ~1–3M parameters vs ~100M+ for raw-signal EEG foundation models.
+
+**Must report with the frozen/fine-tuned distinction:** the +9.8 pretraining gain on sleep is a
+**frozen-encoder** result. Under end-to-end fine-tuning it shrinks to **+2.2** (PC 75.4 vs
+random-init 73.2), because random-init gains +10.3 from fine-tuning. Pretraining's value is
+concentrated where you cannot fine-tune or lack labels — consistent with §4. Reporting only the
+frozen number would be an evaluation-protocol artifact ([[EXP-0017]]).
 
 **Cannot claim:**
 1. ❌ State-of-the-art on any task. We are 8–12 points below on sleep, ~0.1 AUC below on cross-patient seizure.
