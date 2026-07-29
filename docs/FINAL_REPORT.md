@@ -14,7 +14,7 @@ We built the proposed model and evaluated it on **5 EEG tasks / 7 settings** und
 - ❌ The **pretraining** — the actual contribution — does not. Its apparent benefit is largely an artefact of freezing the encoder, and it disappears or reverses under fair evaluation.
 - 🔬 We diagnosed *why*, proposed a mechanism, made a falsifiable prediction from it — and **the prediction failed**, which we report rather than hide.
 
-**One-line verdict:** *a randomly-initialised structured transformer is already a strong EEG encoder; predictive-coding pretraining on DE adds ~2 points on sleep and nothing anywhere else.*
+**One-line verdict:** *a randomly-initialised structured transformer is already a strong EEG encoder; predictive-coding pretraining on DE adds ~2 points on sleep and nothing measurable anywhere else.*
 
 ---
 
@@ -162,6 +162,7 @@ We froze the encoder; all published competitors fine-tune end-to-end.
 | Sleep | PhysioFM (no pretrain) | 62.86 | 73.18 | **+10.32** |
 | Seizure | PhysioFM (pretrained) | 75.51 | 78.66 | +3.15 |
 | Seizure | PhysioFM (no pretrain) | 67.41 | **80.21** | **+12.80** |
+| Seizure (3 seeds) | pretrained vs no-pretrain | — | 78.19 vs 79.11 | **Δ ≈ 0** |
 
 ```
  PRETRAINING BENEFIT (PhysioFM pretrained − PhysioFM random-init)
@@ -170,7 +171,7 @@ We froze the encoder; all published competitors fine-tune end-to-end.
            fine-t  +2.2  ████
 
  Seizure   frozen  +8.1  ████████████████
-           fine-t  −1.6  ███  (random-init WINS)
+           fine-t  ~0.0  ·    (3 seeds: bal-acc −0.9, AUC +0.007 — no effect)
 ```
 
 > **Freezing handicapped the baseline far more than us.** Fine-tuning gains random-init +10 to +13 points and PC only ~+3.
@@ -250,7 +251,7 @@ The mechanism makes a falsifiable prediction: **seizure *prediction*** is the on
 | Emotion (smoothed) | acc % | 59.26 | 56.88 | **62.75** | +2.38 | −3.49 |
 | Motor imagery | acc % | 41.71 | 43.54 | **51.08** | −1.84 | −9.37 |
 | **Sleep (fine-tuned)** | acc % | **75.37** | 73.18 | — | **+2.19** | — |
-| **Seizure (fine-tuned)** | bal-acc % | 78.66 | **80.21** | — | **−1.55** | — |
+| **Seizure (fine-tuned, 3 seeds)** | bal-acc % | 78.19 | 79.11 | — | **≈ 0** | — |
 
 **Versus published SOTA** (first-pass, needs verification):
 
