@@ -39,18 +39,28 @@ def build(ckpt, device):
     a = ckpt["args"]
     enc = PhysioFMS(n_cb=ckpt["n_cb"], p_in=a["p_in"], p_out=a["p_out"], variant=a["variant"],
                     hidden=a["hidden"], layers=a["layers"], heads=a["heads"],
-                    embedder=a.get("embedder", "linear"))
+                    embedder=a.get("embedder", "linear"), causal=bool(a.get("causal", 1)))
     enc.load_state_dict(ckpt["state_dict"])
     return enc.to(device), nn.Linear(enc.d, 2).to(device)
 
 
-def chunk(seq, lab, max_len):
-    if max_len <= 0 or seq.shape[0] <= max_len:
+def pool_epochs(h, tpe):
+    if tpe == 1:
+        return h
+    b, p, d = h.shape
+    n = p // tpe
+    return h[:, : n * tpe].reshape(b, n, tpe, d).mean(2)
+
+
+def chunk(seq, lab, max_len, tpe=1):
+    n_ep = min(seq.shape[0] // tpe, lab.shape[0])
+    seq = seq[: n_ep * tpe]; lab = lab[:n_ep]
+    if max_len <= 0 or n_ep <= max_len:
         return [(seq, lab)]
-    return [(seq[i:i + max_len], lab[i:i + max_len]) for i in range(0, seq.shape[0], max_len)]
+    return [(seq[i * tpe:(i + max_len) * tpe], lab[i:i + max_len]) for i in range(0, n_ep, max_len)]
 
 
-def run_fold(ckpt, tr, te, epochs, lr, batch, max_len, device, pos_w):
+def run_fold(ckpt, tr, te, epochs, lr, batch, max_len, device, pos_w, tpe=1):
     import torch
     import torch.nn.functional as F
     from sklearn.metrics import balanced_accuracy_score, recall_score, roc_auc_score
@@ -61,7 +71,7 @@ def run_fold(ckpt, tr, te, epochs, lr, batch, max_len, device, pos_w):
     opt = torch.optim.AdamW(params, lr=lr, weight_decay=0.01)
     w = torch.tensor([1.0, pos_w], dtype=torch.float32, device=device)
 
-    tr_chunks = [c for s, l in tr for c in chunk(s, l, max_len)]
+    tr_chunks = [c for s, l in tr for c in chunk(s, l, max_len, tpe)]
     # keep every seizure-bearing chunk; subsample pure-interictal chunks (0.3% positives
     # otherwise makes almost every step uninformative and the run needlessly long)
     rng = np.random.default_rng(0)
@@ -78,10 +88,10 @@ def run_fold(ckpt, tr, te, epochs, lr, batch, max_len, device, pos_w):
             idx = order[b0:b0 + batch]
             xs = [tr_chunks[i][0] for i in idx]; ls = [tr_chunks[i][1] for i in idx]
             x, mask = collate_pad(xs)
-            y = np.full((len(idx), x.shape[1]), -100, dtype=np.int64)
+            y = np.full((len(idx), x.shape[1] // tpe), -100, dtype=np.int64)
             for r, l in enumerate(ls):
                 y[r, :len(l)] = l
-            logits = head(enc.encode(x.to(device), mask.to(device)))
+            logits = head(pool_epochs(enc.encode(x.to(device), mask.to(device)), tpe))
             loss = F.cross_entropy(logits.reshape(-1, 2),
                                    torch.from_numpy(y).to(device).reshape(-1),
                                    weight=w, ignore_index=-100)
@@ -97,9 +107,9 @@ def run_fold(ckpt, tr, te, epochs, lr, batch, max_len, device, pos_w):
     P, G = [], []
     with torch.no_grad():
         for s, l in te:
-            for cs, cl in chunk(s, l, max_len):
+            for cs, cl in chunk(s, l, max_len, tpe):
                 x, mask = collate_pad([cs])
-                lo = head(enc.encode(x.to(device), mask.to(device)))[0, :len(cl)]
+                lo = head(pool_epochs(enc.encode(x.to(device), mask.to(device)), tpe))[0, :len(cl)]
                 P.append(torch.softmax(lo, -1)[:, 1].cpu().numpy()); G.append(cl)
     p = np.concatenate(P); g = np.concatenate(G)
     k = g >= 0
@@ -123,9 +133,17 @@ def main() -> None:
     ap.add_argument("--max_len", type=int, default=400)
     ap.add_argument("--out_csv", default="results/phase3/f17/f17_chbmit_finetune.csv")
     ap.add_argument("--labels", default=None)
+    ap.add_argument("--arch_key", default="chbmit")
+    ap.add_argument("--tokens_per_epoch", type=int, default=None)
+    ap.add_argument("--latent_dir", default=None)
+    ap.add_argument("--arm", nargs=2, action="append", default=[], metavar=("NAME", "DIR"))
+    ap.add_argument("--tag", default="")
     args = ap.parse_args()
     if args.labels:
         _ce.LABELS_OVERRIDE = args.labels
+    _ce.ARCH_KEY = args.arch_key
+    from physiofm.structured_data import TOKENS_PER_EPOCH
+    tpe = args.tokens_per_epoch or TOKENS_PER_EPOCH.get(args.arch_key, 1)
 
     import torch
 
@@ -139,7 +157,9 @@ def main() -> None:
     LOG.info("CHB-MIT: %d recordings, %d patients, positive weight %.1f", len(trials), len(uniq), pos_w)
 
     rows = []
-    for arm, mdir in (("physiofm_pc", args.pc_dir), ("physiofm_rand", args.rand_dir)):
+    arms = [("physiofm_pc", args.pc_dir), ("physiofm_latent", args.latent_dir), ("physiofm_rand", args.rand_dir)]
+    arms += [(n, d) for n, d in args.arm]
+    for arm, mdir in arms:
         if mdir is None:
             continue
         mdir = Path(mdir)
@@ -152,7 +172,7 @@ def main() -> None:
             tr = [(seqs[i], labels[i]) for i in range(len(trials)) if not te_m[i]]
             te = [(seqs[i], labels[i]) for i in range(len(trials)) if te_m[i]]
             LOG.info("  %s patient %s", arm, p)
-            r = run_fold(ckpt, tr, te, args.epochs, args.lr, args.batch, args.max_len, device, pos_w)
+            r = run_fold(ckpt, tr, te, args.epochs, args.lr, args.batch, args.max_len, device, pos_w, tpe)
             if r is not None:
                 LOG.info("  %s patient %s -> bal_acc=%.2f sens=%.2f spec=%.2f auc=%.3f",
                          arm, p, r[0] * 100, r[1] * 100, r[2] * 100, r[3])
@@ -161,7 +181,7 @@ def main() -> None:
         LOG.info("RESULT %-14s bal_acc=%.2f±%.2f sens=%.2f spec=%.2f auc=%.3f±%.3f (%d patients)",
                  arm, a[:, 0].mean() * 100, a[:, 0].std() * 100, a[:, 1].mean() * 100,
                  a[:, 2].mean() * 100, a[:, 3].mean(), a[:, 3].std(), len(res))
-        rows.append((arm, len(res), a[:, 0].mean() * 100, a[:, 0].std() * 100,
+        rows.append((arm + args.tag, len(res), a[:, 0].mean() * 100, a[:, 0].std() * 100,
                      a[:, 1].mean() * 100, a[:, 2].mean() * 100, a[:, 3].mean(), a[:, 3].std()))
 
     out = Path(args.out_csv); out.parent.mkdir(parents=True, exist_ok=True)

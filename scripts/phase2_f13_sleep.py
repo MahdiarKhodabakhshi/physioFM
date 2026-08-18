@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from physiofm.de import load_de_archive
 from physiofm.phase2_eval import CLASSIFIERS
 from physiofm.sleep_edf import LABEL_NAMES, load_sleep_labels
-from physiofm.structured_data import ARCH, collate_pad, load_standardizer, standardize
+from physiofm.structured_data import ARCH, TOKENS_PER_EPOCH, collate_pad, load_standardizer, standardize
 
 # reuse the exact model-load pattern from the emotion extractor
 from scripts.phase2_extract_eval import load_model  # noqa: E402
@@ -43,11 +43,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 LOG = logging.getLogger("f13_sleep")
 
 LABELS_ARCH = "data/physiofm/de_features/sleep_edf_labels.npz"
+# Next-phase plan: evaluators can be pointed at a sibling archive of the SAME recordings
+# (sleep_edf_tf64 = 64-bin time-frequency tokens; sleep_edf_raw = raw 200 ms tokens).
+# The label companion is identical across them (asserted at build time).
+ARCH_KEY = "sleep_edf"
 
 
 def _load_recordings():
     """Return aligned (trials, per_epoch_labels) for the sleep corpus."""
-    trials = load_de_archive(ARCH["sleep_edf"])
+    trials = load_de_archive(ARCH[ARCH_KEY])
     labels, subj, night, key = load_sleep_labels(LABELS_ARCH)
     if len(trials) != len(labels):
         raise SystemExit(f"archive/labels misalignment: {len(trials)} vs {len(labels)}")
@@ -55,8 +59,17 @@ def _load_recordings():
 
 
 def extract_model_features(model_dir: Path, trials, labels, device, batch_size: int = 16,
-                           shuffle_time: bool = False, shuffle_seed: int = 0):
+                           shuffle_time: bool = False, shuffle_seed: int = 0,
+                           tokens_per_epoch: int = 1, max_len: int = 0, merge_every: int = 1):
     """Per-epoch frozen-encoder features. Returns X (N,d), subject (N,), y (N,).
+
+    ``merge_every`` m > 1 (per-electrode ablation): consecutive groups of m trials are the m
+    channel-sequences of ONE recording; their per-epoch features are averaged into one.
+
+    ``tokens_per_epoch`` > 1 (raw-token archives): the encoder runs over the token
+    sequence and the per-epoch feature is the mean of that epoch's token states.
+    ``max_len`` > 0: encode in contiguous chunks of that many tokens (memory bound for
+    raw nights; each chunk sees only its own context, exactly as in pretraining/fine-tuning).
 
     Batched with length-bucketing for GPU throughput: recordings are sorted by
     length and padded within a batch. Causal attention + the right-pad mask make
@@ -74,8 +87,8 @@ def extract_model_features(model_dir: Path, trials, labels, device, batch_size: 
     model.eval()
     mean, std = load_standardizer(model_dir / "standardizer.npz")
     p_in = margs["p_in"]
-    if shuffle_time and p_in != 1:
-        raise SystemExit("--shuffle_time assumes p_in=1 (per-epoch alignment)")
+    if shuffle_time and (p_in != 1 or tokens_per_epoch != 1):
+        raise SystemExit("--shuffle_time assumes p_in=1 and one token per epoch")
 
     seqs = [standardize(t.values, mean, std) for t in trials]  # (T, n_cb) each
     perms = None
@@ -84,23 +97,56 @@ def extract_model_features(model_dir: Path, trials, labels, device, batch_size: 
         perms = [rng.permutation(s.shape[0]) for s in seqs]
         seqs = [s[perms[i]] for i, s in enumerate(seqs)]
 
-    order = sorted(range(len(seqs)), key=lambda i: seqs[i].shape[0])  # length buckets
-    feats: list = [None] * len(seqs)
+    # chunking (raw tokens): split each sequence into contiguous max_len-token pieces,
+    # encode the pieces, pool to per-epoch features INSIDE the loop (token states of a raw
+    # corpus would not fit host RAM), and re-assemble in order.
+    if max_len and tokens_per_epoch > 1:
+        assert max_len % tokens_per_epoch == 0, "max_len must be a multiple of tokens_per_epoch"
+    pieces = []  # (seq_idx, start, array)
+    for i, s in enumerate(seqs):
+        if max_len and s.shape[0] > max_len:
+            for st in range(0, s.shape[0], max_len):
+                pieces.append((i, st, s[st:st + max_len]))
+        else:
+            pieces.append((i, 0, s))
+    order = sorted(range(len(pieces)), key=lambda k: pieces[k][2].shape[0])  # length buckets
+    piece_feats: list = [None] * len(pieces)
     with torch.no_grad():
         for b0 in range(0, len(order), batch_size):
             idxs = order[b0 : b0 + batch_size]
-            batch = [seqs[i] for i in idxs]
+            batch = [pieces[k][2] for k in idxs]
             x, mask = collate_pad(batch)  # (B, Tmax, n_cb), (B, Tmax)
-            h = model.encode(x.to(device), mask.to(device)).float().cpu().numpy()  # (B, Pmax, d)
-            for j, i in enumerate(idxs):
+            h = model.encode(x.to(device), mask.to(device)).float()  # (B, Pmax, d) on device
+            for j, k in enumerate(idxs):
                 t = batch[j].shape[0]
                 p = t // p_in
                 hi = h[j, :p]
-                feats[i] = hi if p_in == 1 else np.repeat(hi, p_in, axis=0)[:t]
+                if p_in != 1:
+                    hi = hi.repeat_interleave(p_in, dim=0)[:t]
+                if tokens_per_epoch > 1:  # pool token states -> one feature per labelled epoch
+                    n_ep = hi.shape[0] // tokens_per_epoch
+                    hi = hi[: n_ep * tokens_per_epoch].reshape(n_ep, tokens_per_epoch, -1).mean(1)
+                piece_feats[k] = hi.cpu().numpy()
+    feats: list = [None] * len(seqs)
+    by_seq: dict = {}
+    for k, (i, st, _) in enumerate(pieces):
+        by_seq.setdefault(i, []).append((st, k))
+    for i, lst in by_seq.items():
+        feats[i] = np.concatenate([piece_feats[k] for st, k in sorted(lst)], 0)
 
     if shuffle_time:  # undo the permutation so features re-align with true labels
         for i in range(len(feats)):
             feats[i] = feats[i][np.argsort(perms[i])]
+
+    if merge_every > 1:
+        m = merge_every
+        assert len(feats) % m == 0, "merge_every must divide the number of sequences"
+        feats = [np.mean([feats[i * m + j] for j in range(m)], axis=0) for i in range(len(feats) // m)]
+        for i in range(len(feats)):
+            for j in range(1, m):
+                assert np.array_equal(labels[i * m], labels[i * m + j]), "merged sequences must share labels"
+        trials = [trials[i * m] for i in range(len(feats))]
+        labels = [labels[i * m] for i in range(len(feats))]
 
     X, subj, y = [], [], []
     for i, (t, lab) in enumerate(zip(trials, labels)):
@@ -180,7 +226,22 @@ def main() -> None:
     ap.add_argument("--shuffle_seed", type=int, default=0)
     ap.add_argument("--self_check", action="store_true",
                     help="verify batched==unbatched extraction on a few recordings, then exit")
+    # ---- next-phase plan ----
+    ap.add_argument("--arch_key", default="sleep_edf", help="archive key in structured_data.ARCH")
+    ap.add_argument("--labels", default=None, help="per-epoch label companion (default: DE one)")
+    ap.add_argument("--tokens_per_epoch", type=int, default=None)
+    ap.add_argument("--max_len", type=int, default=0, help="encode in chunks of this many tokens (0=whole)")
+    ap.add_argument("--latent_dir", default=None, help="latent-objective model dir (arm physiofm_latent)")
+    ap.add_argument("--arm", nargs=2, action="append", default=[], metavar=("NAME", "DIR"),
+                    help="additional (name, model_dir) arms")
+    ap.add_argument("--merge_every", type=int, default=1,
+                    help="per-electrode ablation: average features of every m consecutive sequences")
     args = ap.parse_args()
+    global ARCH_KEY, LABELS_ARCH
+    ARCH_KEY = args.arch_key
+    if args.labels:
+        LABELS_ARCH = args.labels
+    tpe = args.tokens_per_epoch or TOKENS_PER_EPOCH.get(args.arch_key, 1)
 
     import torch
 
@@ -203,15 +264,18 @@ def main() -> None:
 
     feature_sets = {}
     if args.raw:
+        if tpe != 1:
+            raise SystemExit("--raw (features straight to the classifier) needs one token per epoch")
         feature_sets["raw_de"] = extract_raw_features(trials, labels)
-    if args.pc_dir:
-        feature_sets["physiofm_pc"] = extract_model_features(
-            Path(args.pc_dir), trials, labels, device, args.batch_size,
-            args.shuffle_time, args.shuffle_seed)
-    if args.rand_dir:
-        feature_sets["physiofm_rand"] = extract_model_features(
-            Path(args.rand_dir), trials, labels, device, args.batch_size,
-            args.shuffle_time, args.shuffle_seed)
+    arms = []
+    if args.pc_dir: arms.append(("physiofm_pc", args.pc_dir))
+    if args.latent_dir: arms.append(("physiofm_latent", args.latent_dir))
+    if args.rand_dir: arms.append(("physiofm_rand", args.rand_dir))
+    arms += [(n, d) for n, d in args.arm]
+    for name, mdir in arms:
+        feature_sets[name] = extract_model_features(
+            Path(mdir), trials, labels, device, args.batch_size,
+            args.shuffle_time, args.shuffle_seed, tpe, args.max_len, args.merge_every)
     if not feature_sets:
         raise SystemExit("nothing to evaluate: pass --raw and/or --pc_dir/--rand_dir")
 

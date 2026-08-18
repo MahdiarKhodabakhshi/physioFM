@@ -111,8 +111,15 @@ def load_recording(
     channels: tuple[str, ...] = DEFAULT_EEG_CHANNELS,
     bands=DEFAULT_BANDS,
     trim_wake_min: float | None = 30.0,
+    feature_fn=None,
 ) -> SleepRecording | None:
-    """Read one PSG + hypnogram into per-epoch DE + per-epoch labels."""
+    """Read one PSG + hypnogram into per-epoch DE + per-epoch labels.
+
+    ``feature_fn(eeg, sfreq, window_sec, step_sec) -> (n_epochs, n_ch, n_feat)`` replaces
+    the DE computation (next-phase plan: rich time-frequency tokens, raw tokens) while
+    keeping recording order, epoching and wake-trimming identical, so the per-epoch label
+    companion of the DE archive stays aligned.
+    """
     import mne
 
     psg_path, hyp_path = Path(psg_path), Path(hyp_path)
@@ -129,9 +136,12 @@ def load_recording(
     eeg = raw.get_data() * 1e6  # Volts -> microvolts (DE scale invariant, but keep sane units)
 
     # Per-30s-epoch DE: window == step == 30 s gives consecutive epoch tokens.
-    values = compute_differential_entropy(
-        eeg, sfreq, window_sec=EPOCH_SEC, step_sec=EPOCH_SEC, bands=bands
-    )  # (n_epochs, n_ch, n_band)
+    if feature_fn is None:
+        values = compute_differential_entropy(
+            eeg, sfreq, window_sec=EPOCH_SEC, step_sec=EPOCH_SEC, bands=bands
+        )  # (n_epochs, n_ch, n_band)
+    else:
+        values = feature_fn(eeg, sfreq, EPOCH_SEC, EPOCH_SEC)
     n_epochs = values.shape[0]
     if n_epochs == 0:
         return None
@@ -155,13 +165,15 @@ def build_sleep_corpus(
     channels: tuple[str, ...] = DEFAULT_EEG_CHANNELS,
     trim_wake_min: float | None = 30.0,
     limit: int | None = None,
+    feature_fn=None,
 ) -> list[SleepRecording]:
     pairs = _pair_recordings(root)
     if limit is not None:
         pairs = pairs[:limit]
     recs: list[SleepRecording] = []
     for psg, hyp in pairs:
-        rec = load_recording(psg, hyp, channels=channels, trim_wake_min=trim_wake_min)
+        rec = load_recording(psg, hyp, channels=channels, trim_wake_min=trim_wake_min,
+                             feature_fn=feature_fn)
         if rec is not None:
             recs.append(rec)
     return recs

@@ -213,13 +213,17 @@ def load_trials(dataset: str, root: str | Path, feature_key: str = "de_LDS") -> 
     raise ValueError(f"Unsupported dataset: {dataset}")
 
 
-def save_de_archive(trials: list[DETrial], output_path: str | Path) -> None:
-    """Save variable-length DE trials to a compressed local archive."""
+def save_de_archive(trials: list[DETrial], output_path: str | Path, dtype=np.float32) -> None:
+    """Save variable-length DE trials to a compressed local archive.
+
+    ``dtype`` (next-phase plan): raw-token archives are stored as float16 to halve disk/RAM;
+    ``load_de_archive`` always returns float32.
+    """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     values = np.empty(len(trials), dtype=object)
     for i, trial in enumerate(trials):
-        values[i] = np.asarray(trial.values, dtype=np.float32)
+        values[i] = np.asarray(trial.values, dtype=dtype)
 
     labels = np.array([trial.label if trial.label is not None else -999 for trial in trials], dtype=np.int64)
     label_missing = np.array([trial.label is None for trial in trials], dtype=bool)

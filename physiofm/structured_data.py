@@ -36,6 +36,28 @@ ARCH = {
     # bands); per-epoch binary label (seizure/interictal) in the companion
     # chbmit_labels.npz, read by the seizure evaluator.
     "chbmit": "data/physiofm/de_features/chbmit_de.npz",
+    # ---- Next-phase plan (docs/NEXT_PHASE_PLAN.md) ------------------------------------
+    # Gate 0: rich time-frequency tokens — the same per-epoch pipeline as DE but 64
+    # log-spaced log-power bins per channel instead of 5 bands (physiofm/spectral.py).
+    # Same recordings, same order, same label companions as the DE archives.
+    "sleep_edf_tf64": "data/physiofm/tf_features/sleep_edf_tf64.npz",
+    "chbmit_tf64": "data/physiofm/tf_features/chbmit_tf64.npz",
+    # Gate 2: RAW-EEG structured tokens. One token = all channels x 200 ms of raw signal
+    # (sleep: 2 ch x 20 samples @100 Hz = 40-d; 150 tokens per 30 s epoch). Stored in the
+    # DE-archive container as (tokens, channels, samples) so every consumer sees a
+    # generic (T, C, S) sequence (physiofm/raw_eeg.py). *_perch = the BrainGPT-style
+    # per-electrode decomposition ablation (one sequence per channel, token = 1 x 20).
+    "sleep_edf_raw": "data/physiofm/raw_tokens/sleep_edf_raw200ms.npz",
+    "sleep_edf_raw_perch": "data/physiofm/raw_tokens/sleep_edf_raw200ms_perch.npz",
+    "chbmit_raw": "data/physiofm/raw_tokens/chbmit_raw200ms.npz",
+}
+
+# Tokens per labelled epoch for each archive (1 = one token per epoch, the DE default).
+# Raw archives carry many tokens per 30 s / 2 s epoch; per-epoch consumers pool them.
+TOKENS_PER_EPOCH = {
+    "sleep_edf_raw": 150,
+    "sleep_edf_raw_perch": 150,
+    "chbmit_raw": 10,
 }
 
 
@@ -70,12 +92,26 @@ def standardize(values: np.ndarray, mean: np.ndarray, std: np.ndarray) -> np.nda
 
 
 class SequenceDataset:
-    """Yields standardized trial sequences (T, n_cb) for PC pretraining."""
+    """Yields standardized trial sequences (T, n_cb) for PC pretraining.
 
-    def __init__(self, trials: list[DETrial], mean: np.ndarray, std: np.ndarray, min_len: int = 2) -> None:
-        self.seqs = [
-            standardize(t.values, mean, std) for t in trials if t.values.shape[0] >= min_len
-        ]
+    ``max_len`` (next-phase plan): sequences longer than this are split into contiguous
+    chunks so whole-night / whole-file / raw-token sequences fit GPU memory. Chunking is
+    a pure memory bound (each chunk keeps its internal order and full context up to
+    ``max_len``); leftover chunks shorter than ``min_len`` are dropped.
+    """
+
+    def __init__(self, trials: list[DETrial], mean: np.ndarray, std: np.ndarray, min_len: int = 2,
+                 max_len: int = 0) -> None:
+        self.seqs = []
+        for t in trials:
+            s = standardize(t.values, mean, std)
+            if max_len and s.shape[0] > max_len:
+                for i in range(0, s.shape[0], max_len):
+                    c = s[i:i + max_len]
+                    if c.shape[0] >= min_len:
+                        self.seqs.append(c)
+            elif s.shape[0] >= min_len:
+                self.seqs.append(s)
 
     def __len__(self) -> int:
         return len(self.seqs)

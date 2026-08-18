@@ -35,7 +35,7 @@ def load_model(model_dir: Path, device: str):
     model = PhysioFMS(
         n_cb=ckpt["n_cb"], p_in=a["p_in"], p_out=a["p_out"], variant=a["variant"],
         hidden=a["hidden"], layers=a["layers"], heads=a["heads"],
-        embedder=a.get("embedder", "linear"),
+        embedder=a.get("embedder", "linear"), causal=bool(a.get("causal", 1)),
     ).to(device)
     model.load_state_dict(ckpt["state_dict"])
     model.eval()

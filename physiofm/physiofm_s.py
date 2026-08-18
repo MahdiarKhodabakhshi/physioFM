@@ -20,11 +20,13 @@ applies in the raw-DE ceiling), not per-series-over-time instance norm.
 
 from __future__ import annotations
 
+import os
+
 import torch
 import torch.nn as nn
 
 from transformers import TimesFm2_5Config
-from transformers.masking_utils import create_causal_mask
+from transformers.masking_utils import create_bidirectional_mask, create_causal_mask
 from transformers.models.timesfm2_5.modeling_timesfm2_5 import (
     TimesFm2_5DecoderLayer,
     TimesFm2_5RMSNorm,
@@ -117,6 +119,7 @@ class PhysioFMS(nn.Module):
         embedder: str = "linear",
         n_ch: int = 62,
         n_band: int = 5,
+        causal: bool = True,
     ) -> None:
         super().__init__()
         self.n_cb = n_cb
@@ -124,6 +127,10 @@ class PhysioFMS(nn.Module):
         self.p_out = p_out
         self.variant = variant
         self.embedder = embedder
+        # Gate 3 (next-phase plan): a bidirectional twin of the same stack, used only to
+        # measure what the causal constraint costs/buys under a streaming evaluation.
+        # Every pretraining/eval result before Gate 3 is causal (the default).
+        self.causal = causal
 
         if variant == "timesfm":
             from transformers import TimesFm2_5ModelForPrediction
@@ -157,7 +164,16 @@ class PhysioFMS(nn.Module):
         else:
             raise ValueError(f"unknown variant {variant!r}")
 
-        self.config._attn_implementation = "eager"
+        # Attention kernel. SDPA is numerically identical to eager (max |diff| ~3e-6 on
+        # a 500-step sequence) but stores no L x L weights, so whole-night / whole-file
+        # sequences fit a 20 GB card (L=3000, B=4: 1.8 GB vs 11.9 GB eager). Override
+        # with PHYSIOFM_ATTN=eager to reproduce the original kernel bit-for-bit.
+        self.config._attn_implementation = os.environ.get("PHYSIOFM_ATTN", "sdpa")
+        # SDPA drops an all-ones padding mask and then falls back to each attention module's
+        # `is_causal` flag (hard-coded True in TimesFm2_5Attention). Make that flag follow
+        # `causal` so the bidirectional twin is bidirectional on unpadded batches too.
+        for layer in self.layers:
+            layer.self_attn.is_causal = bool(causal)
         self.d = d
         if embedder == "attn":
             self.patch_in = CBPatchEmbed(n_ch, n_band, p_in, d)
@@ -198,7 +214,10 @@ class PhysioFMS(nn.Module):
             patch_valid = (pv.sum(-1) > 0).long()
 
         position_ids = torch.arange(p, device=x.device).unsqueeze(0).expand(b, -1)
-        attn_mask = create_causal_mask(self.config, emb, patch_valid, past_key_values=None)
+        if self.causal:
+            attn_mask = create_causal_mask(self.config, emb, patch_valid, past_key_values=None)
+        else:
+            attn_mask = create_bidirectional_mask(self.config, emb, patch_valid)
         pos_emb = self.rotary_emb(emb, position_ids)
 
         h = emb

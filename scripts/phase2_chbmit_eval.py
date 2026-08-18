@@ -39,10 +39,11 @@ LOG = logging.getLogger("f17_chbmit")
 
 LABELS_ARCH = "data/physiofm/de_features/chbmit_labels.npz"
 LABELS_OVERRIDE = None  # set by --labels
+ARCH_KEY = "chbmit"     # next-phase plan: chbmit_tf64 / chbmit_raw share the same recordings + labels
 
 
 def _load():
-    trials = load_de_archive(ARCH["chbmit"])
+    trials = load_de_archive(ARCH[ARCH_KEY])
     labels, patient, file_idx, key = load_chbmit_labels(LABELS_OVERRIDE or LABELS_ARCH)
     if len(trials) != len(labels):
         raise SystemExit(f"archive/labels misalignment: {len(trials)} vs {len(labels)}")
@@ -138,9 +139,18 @@ def main() -> None:
     ap.add_argument("--out_dir", default="results/phase3/f17")
     ap.add_argument("--tag", default="")
     ap.add_argument("--labels", default=None, help="alternative per-epoch label archive")
+    ap.add_argument("--arch_key", default="chbmit")
+    ap.add_argument("--tokens_per_epoch", type=int, default=None)
+    ap.add_argument("--max_len", type=int, default=0, help="encode in chunks of this many tokens")
+    ap.add_argument("--latent_dir", default=None)
+    ap.add_argument("--arm", nargs=2, action="append", default=[], metavar=("NAME", "DIR"))
     args = ap.parse_args()
+    global LABELS_OVERRIDE, ARCH_KEY
     if args.labels:
-        global LABELS_OVERRIDE; LABELS_OVERRIDE = args.labels
+        LABELS_OVERRIDE = args.labels
+    ARCH_KEY = args.arch_key
+    from physiofm.structured_data import TOKENS_PER_EPOCH
+    tpe = args.tokens_per_epoch or TOKENS_PER_EPOCH.get(args.arch_key, 1)
 
     import torch
 
@@ -156,10 +166,14 @@ def main() -> None:
     feats = {}
     if args.raw:
         feats["raw_de"] = extract_raw_features(trials, labels)
-    if args.pc_dir:
-        feats["physiofm_pc"] = extract_model_features(Path(args.pc_dir), trials, labels, device, args.batch_size)
-    if args.rand_dir:
-        feats["physiofm_rand"] = extract_model_features(Path(args.rand_dir), trials, labels, device, args.batch_size)
+    arms = []
+    if args.pc_dir: arms.append(("physiofm_pc", args.pc_dir))
+    if args.latent_dir: arms.append(("physiofm_latent", args.latent_dir))
+    if args.rand_dir: arms.append(("physiofm_rand", args.rand_dir))
+    arms += [(n, d) for n, d in args.arm]
+    for name, mdir in arms:
+        feats[name] = extract_model_features(Path(mdir), trials, labels, device, args.batch_size,
+                                             tokens_per_epoch=tpe, max_len=args.max_len)
     if not feats:
         raise SystemExit("nothing to evaluate")
 

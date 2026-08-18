@@ -64,6 +64,8 @@ def main() -> None:
     ap.add_argument("--classifier", default="logreg")
     ap.add_argument("--n_jobs", type=int, default=-1)
     ap.add_argument("--out_csv", default="results/phase3/diagnose_encoder.csv")
+    ap.add_argument("--arch_key", default=None, help="sleep only: sleep_edf (default) | sleep_edf_tf64")
+    ap.add_argument("--latent_dir", default=None, help="latent-objective model dir (adds physiofm_latent + concat)")
     args = ap.parse_args()
 
     import torch
@@ -72,8 +74,11 @@ def main() -> None:
     sets = {}
 
     if args.task == "sleep":
+        import scripts.phase2_f13_sleep as _f13
         from scripts.phase2_f13_sleep import (_load_recordings, extract_model_features,
                                               extract_raw_features, subject_kfold_eval)
+        if args.arch_key:
+            _f13.ARCH_KEY = args.arch_key
         trials, labels = _load_recordings()
         Xr, subj, y = extract_raw_features(trials, labels)
         Xp, _, _ = extract_model_features(Path(args.pc_dir), trials, labels, device, 16)
@@ -81,6 +86,10 @@ def main() -> None:
         sets["physiofm_pc"] = Xp
         sets["concat_raw+pc"] = np.concatenate([Xr, Xp], axis=1)
         sets["raw_randproj256"] = random_projection(Xr)
+        if args.latent_dir:
+            Xl, _, _ = extract_model_features(Path(args.latent_dir), trials, labels, device, 16)
+            sets["physiofm_latent"] = Xl
+            sets["concat_raw+latent"] = np.concatenate([Xr, Xl], axis=1)
         if args.rand_dir:
             Xd, _, _ = extract_model_features(Path(args.rand_dir), trials, labels, device, 16)
             sets["physiofm_rand"] = Xd
@@ -130,7 +139,7 @@ def main() -> None:
         r = evaluate(X)
         m, s = fmt(r)
         LOG.info("DIAG %-8s %-18s dim=%4d  acc=%.2f±%.2f", args.task, name, X.shape[1], m, s)
-        rows.append((args.task, args.dataset or "", name, X.shape[1], m, s))
+        rows.append((args.task, args.dataset or args.arch_key or "", name, X.shape[1], m, s))
 
     out = Path(args.out_csv); out.parent.mkdir(parents=True, exist_ok=True)
     new = not out.exists()

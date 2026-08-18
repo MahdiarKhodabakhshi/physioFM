@@ -109,7 +109,9 @@ def _epoch_seizure_labels(intervals, n_epochs: int) -> np.ndarray:
     return labels
 
 
-def load_recording(edf_path, intervals, channels=CORE_CHANNELS, bands=DEFAULT_BANDS):
+def load_recording(edf_path, intervals, channels=CORE_CHANNELS, bands=DEFAULT_BANDS, feature_fn=None):
+    """One EDF -> per-epoch features + labels. ``feature_fn(eeg, sfreq, window_sec, step_sec)``
+    replaces DE (next-phase plan) with identical epoching, so label companions stay aligned."""
     import mne
 
     edf_path = Path(edf_path)
@@ -123,7 +125,10 @@ def load_recording(edf_path, intervals, channels=CORE_CHANNELS, bands=DEFAULT_BA
     raw.pick(picks)
     sfreq = float(raw.info["sfreq"])
     eeg = raw.get_data() * 1e6  # V -> uV
-    values = compute_differential_entropy(eeg, sfreq, EPOCH_SEC, EPOCH_SEC, bands)
+    if feature_fn is None:
+        values = compute_differential_entropy(eeg, sfreq, EPOCH_SEC, EPOCH_SEC, bands)
+    else:
+        values = feature_fn(eeg, sfreq, EPOCH_SEC, EPOCH_SEC)
     n = values.shape[0]
     if n == 0:
         return None
@@ -137,7 +142,7 @@ def load_recording(edf_path, intervals, channels=CORE_CHANNELS, bands=DEFAULT_BA
 
 
 def build_chbmit_corpus(root, patients=None, channels=CORE_CHANNELS,
-                        seizure_files_only=False, limit=None):
+                        seizure_files_only=False, limit=None, feature_fn=None):
     """Build per-recording seizure DE. seizure_files_only keeps interictal context
     manageable by taking only files that contain >=1 seizure (+ their labels)."""
     root = Path(root)
@@ -154,7 +159,7 @@ def build_chbmit_corpus(root, patients=None, channels=CORE_CHANNELS,
             intervals = ann.get(edf.name, [])
             if seizure_files_only and not intervals:
                 continue
-            rec = load_recording(edf, intervals, channels=channels)
+            rec = load_recording(edf, intervals, channels=channels, feature_fn=feature_fn)
             if rec is not None:
                 recs.append(rec)
             if limit and len(recs) >= limit:
