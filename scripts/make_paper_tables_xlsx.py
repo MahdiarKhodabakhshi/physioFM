@@ -2,6 +2,7 @@
 """Build docs/paper_results_tables.xlsx — the discussion workbook for the paper.
 
 Sheets:
+  0. Numbers       — clean, numbers-only tables for the meeting (no prose in cells).
   1. Method        — what the final method IS (architecture, tokens, training, evaluation), naming key,
                      and the open method decisions.
   2. Main results  — the results we would put in the paper, one row per task x setting, with the
@@ -60,11 +61,140 @@ def write_sheet(ws, headers, rows, widths, include_col=None, section_col=0):
     ws.freeze_panes = "A2"
 
 
+TITLE_FONT = Font(bold=True, size=12, color="17203A")
+NUM_ALIGN = Alignment(horizontal="right", vertical="center")
+
+
+def write_blocks(ws, blocks, widths):
+    """Clean numbers-only sheet: a list of (title, headers, rows[, note]) blocks separated by a blank row."""
+    r = 1
+    for block in blocks:
+        title, headers, rows = block[0], block[1], block[2]
+        note = block[3] if len(block) > 3 else None
+        ws.cell(row=r, column=1, value=title).font = TITLE_FONT
+        r += 1
+        for c, h in enumerate(headers, start=1):
+            cell = ws.cell(row=r, column=c, value=h)
+            cell.fill = HDR_FILL; cell.font = HDR_FONT; cell.border = BORDER
+            cell.alignment = Alignment(horizontal="left" if c == 1 else "right", vertical="center", wrap_text=True)
+        r += 1
+        for row in rows:
+            for c, v in enumerate(row, start=1):
+                cell = ws.cell(row=r, column=c, value=v)
+                cell.border = BORDER
+                cell.alignment = Alignment(horizontal="left", vertical="center") if c == 1 else NUM_ALIGN
+                if isinstance(v, float) and abs(v) >= 10:
+                    cell.number_format = "0.0"   # accuracies; deltas / AUC / kappa keep their own precision
+            r += 1
+        if note:
+            ws.cell(row=r, column=1, value=note).font = Font(italic=True, color="5B6579", size=9)
+            r += 1
+        r += 1
+    for i, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+
+def numbers_sheet(ws):
+    blocks = [
+        ("Sleep-EDF-78 — subject-disjoint 5-fold — accuracy %, FINE-TUNED",
+         ["Input tokens", "Pretrained", "No pretrain", "Δ pretrain", "Raw features → logreg", "HGB", "SOTA (unverified)", "Pretrain seeds"],
+         [["tf64 (2×64)", 77.9, 77.0, 0.85, 72.8, 75.2, "81–85", 4],
+          ["DE (2×5)", 75.5, 73.1, 2.5, 67.9, 69.6, "81–85", 4],
+          ["raw 200 ms (2×20)", 75.5, 74.2, 1.2, None, None, "81–85", 1],
+          ["raw per-electrode (1×20)", 76.4, 74.6, 1.8, None, None, "81–85", 1]],
+         "± over seeds: tf64 0.4 / 0.2; DE 0.3 / 0.5. κ: tf64 .71 / .69; DE .672 / .645; raw .676 / .658."),
+        ("Sleep-EDF-78 — Cohen's κ, FINE-TUNED",
+         ["Input tokens", "Pretrained", "No pretrain", "Raw features → logreg", "SOTA (unverified)"],
+         [["tf64", 0.71, 0.69, 0.64, "0.77–0.83"],
+          ["DE", 0.672, 0.645, 0.575, "0.77–0.83"],
+          ["raw 200 ms", 0.676, 0.658, None, "0.77–0.83"]]),
+        ("CHB-MIT seizure detection — leave-one-patient-out (24 patients)",
+         ["Arm", "bal-acc %", "ROC-AUC", "Seeds"],
+         [["Fine-tuned — pretrained", 78.4, 0.863, 1],
+          ["Fine-tuned — pretrained (Jul, 3-seed mean)", 78.2, 0.867, 3],
+          ["Fine-tuned — no pretrain", 80.2, 0.874, 1],
+          ["Fine-tuned — no pretrain (Jul, 3-seed mean)", 79.1, 0.860, 3],
+          ["Fine-tuned — latent objective", 79.7, 0.879, 1],
+          ["Frozen — pretrained", 77.4, 0.852, 1],
+          ["Frozen — no pretrain", 67.5, 0.741, 1],
+          ["Raw DE → logreg", 72.4, 0.806, None],
+          ["Raw DE → HGB", 74.0, 0.851, None],
+          ["SOTA cross-patient (unverified)", None, "0.91–0.99", None]],
+         "Per-patient sd ±12–16 bal-acc: the three fine-tuned arms are indistinguishable. tf64 gives no headroom on this task (linear 72.4 = 72.4)."),
+        ("Streaming evaluation — Sleep-EDF-78, DE tokens, FINE-TUNED (accuracy %)",
+         ["Arm", "Offline (whole window)", "Online (past only)", "Tokens per decision"],
+         [["Causal — no pretrain", 73.2, 73.2, 1],
+          ["Bidirectional twin — no pretrain", 74.1, 70.4, 190],
+          ["Causal — latent", 74.1, 74.1, 1],
+          ["Causal — pretrained", 75.4, 75.4, 1]],
+         "1 seed, 5 folds. Causal beats bidirectional online by +2.8 (no pretrain) / +5.0 (pretrained)."),
+        ("Frozen-probe settings (never fine-tuned) — accuracy % unless noted",
+         ["Task", "Pretrained", "No pretrain", "Raw features → logreg", "Seeds"],
+         [["Emotion SEED-IV, smoothed", 59.3, 56.9, 62.8, 3],
+          ["Emotion SEED-IV, un-smoothed", 51.7, 40.7, 55.3, 3],
+          ["Motor imagery BCI-IV-2a", 41.7, 43.5, 51.1, 3],
+          ["Seizure prediction — bal-acc", 66.8, 71.3, 65.2, 1],
+          ["Seizure prediction — AUC", 0.769, 0.793, 0.710, 1]]),
+        ("Ablation — pretraining Δ (pretrained − no pretrain): frozen probe vs fine-tuned",
+         ["Setting", "Frozen Δ", "Fine-tuned Δ", "Inflation ×"],
+         [["Sleep DE", 9.8, 2.5, 3.9],
+          ["Sleep tf64", 11.2, 0.85, 13.2],
+          ["Sleep raw", 14.7, 1.2, 12.3],
+          ["Seizure DE", 8.1, 0.0, None]]),
+        ("Ablation — pretraining objective (Sleep DE, fine-tuned accuracy %, seed 42)",
+         ["Objective", "Accuracy"],
+         [["Input-space PC (next 16 tokens, MSE)", 75.4],
+          ["Latent targets (JEPA/data2vec)", 74.1],
+          ["Latent — delta targets", 73.9],
+          ["Latent — cosine, no normalisation", 72.7],
+          ["Latent — variance term", 73.2],
+          ["Latent — EMA 0.99", 74.0],
+          ["Latent — p_out 4", 74.0],
+          ["No pretraining", 73.2]],
+         "4-seed means: input-PC 75.5, latent 73.7, no pretrain 73.1."),
+        ("Ablation — linear saturation of the input features",
+         ["Features", "Logistic regression", "MLP", "HGB", "Headroom (best − linear)"],
+         [["Sleep DE (acc)", 67.9, 67.2, 69.6, 1.7],
+          ["Sleep tf64 (acc)", 72.8, 71.9, 75.2, 2.3],
+          ["Seizure DE (bal-acc)", 72.4, 69.5, 74.0, 1.6],
+          ["Seizure tf64 (bal-acc)", 72.4, 69.9, 72.6, 0.2],
+          ["Seizure DE (AUC)", 0.807, 0.824, 0.851, 0.044],
+          ["Seizure tf64 (AUC)", 0.809, 0.824, 0.849, 0.040]]),
+        ("Ablation — dimension-matched control (frozen probe, accuracy %)",
+         ["Setting", "Raw features", "Random 256-d projection", "Pretrained encoder", "Δ vs projection", "Concat raw ‖ encoder"],
+         [["Sleep DE", 67.9, 69.3, 72.6, 3.3, 73.3],
+          ["Sleep tf64", 72.8, 73.3, 76.8, 3.5, 77.4],
+          ["Emotion SEED-IV smoothed", 62.8, 60.2, 60.0, -0.2, 62.5],
+          ["Motor imagery", 51.1, 49.9, 40.6, -9.3, 43.8]]),
+        ("Ablation — structured vs per-electrode raw tokens (Sleep, fine-tuned accuracy %, 1 seed)",
+         ["Arm", "Structured (2×20)", "Per-electrode (1×20)"],
+         [["Pretrained", 75.5, 76.4], ["Latent", 74.7, 75.5], ["No pretrain", 74.2, 74.6]]),
+        ("Ablation — label fraction (Sleep DE, Δ pretrained − no pretrain, accuracy points)",
+         ["Training labels", "Frozen Δ", "Fine-tuned Δ"],
+         [["1 %", 12.7, 1.9], ["5 %", 11.8, 2.4], ["10 %", 10.8, 2.4], ["100 %", 9.8, 2.2]]),
+        ("Reference — Phase 1 vs Phase 2 (emotion, frozen probe, accuracy %)",
+         ["Setting", "SEED-V", "SEED-IV", "Chance"],
+         [["Univariate TimesFM (Phase 1)", "23–25", "26–28", "20 / 25"],
+          ["Structured patch, no pretrain", 48.6, 60.7, "20 / 25"],
+          ["Structured patch, pretrained", 45.6, 57.5, "20 / 25"],
+          ["Raw DE → logreg", 51.4, 62.8, "20 / 25"],
+          ["Raw DE + per-series instance norm", 18.0, 26.8, "20 / 25"]]),
+        ("Reference — PC-SSL leakage audit (accuracy %)",
+         ["Dataset", "Published", "Same code, random window split", "Same code, trial-disjoint split", "Raw DE → logreg"],
+         [["SEED-V", 92.4, 65.8, 39.8, 51.4], ["SEED-IV", 84.5, 70.4, 44.7, 62.8]]),
+    ]
+    write_blocks(ws, blocks, [42, 16, 16, 16, 20, 12, 18, 14])
+
+
 def main() -> None:
     wb = Workbook()
 
+    # ------------------------------------------------------------------ 0. Numbers (clean)
+    ws = wb.active; ws.title = "Numbers"
+    numbers_sheet(ws)
+
     # ------------------------------------------------------------------ 1. Method
-    ws = wb.active; ws.title = "Method"
+    ws = wb.create_sheet("Method")
     headers = ["Item", "Final method (proposed for the paper)", "Alternatives we measured", "Decision / note"]
     rows = [
         "A. What the model is",
