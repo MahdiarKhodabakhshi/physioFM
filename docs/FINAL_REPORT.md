@@ -275,7 +275,7 @@ The mechanism makes a falsifiable prediction: **seizure *prediction*** is the on
 3. **Our proposed mechanism** — made a falsifiable prediction; the prediction failed.
 
 ### Methodological findings (of value beyond this project) 🔬
-1. **Frozen-probe evaluation inflates SSL gains ~5×** (+9.8 → +2.2 on sleep; +8.1 → −1.6 on seizure). Widely used in EEG-SSL papers.
+1. **Frozen-probe evaluation inflates SSL gains ~5×** (+9.8 → +2.2 on sleep; +8.1 → ≈0 on seizure, 3 seeds). Widely used in EEG-SSL papers.
 2. **A published EEG-SSL benchmark is inflated ~2× by temporal-neighbour leakage** (84–92% → 40–45%).
 3. **Dimension-matched controls are essential** — our encoder equalled a *random projection* on emotion.
 4. **Pretext skill can anti-correlate with transfer** — optimising the SSL objective harder can make representations worse.
@@ -324,3 +324,23 @@ The negative result is well-controlled, reproducible, and methodologically usefu
 ---
 
 *Every number traces to `docs/experiments/EXP-*` and `results/`; figures regenerate via `scripts/make_figure_*.py`.*
+
+---
+
+## Addendum (2026-08-19) — the next-phase plan was executed
+
+`docs/NEXT_PHASE_PLAN.md` (replace DE, keep the architecture) was run in full — Gates 0–3, four
+pretraining seeds where it matters — and is reported in **`docs/NEXT_PHASE_RESULTS.md`**
+([[EXP-0020]]–[[EXP-0023]]). Headlines, all fine-tuned / subject-disjoint:
+
+| change tested | effect on the *architecture* | effect on *pretraining* |
+|---|---|---|
+| 64-bin spectral tokens instead of 5 DE bands (Gate 0) | sleep **75.4 → 77.9 % (κ .71)** | +2.5 → **+0.85** |
+| latent-target (JEPA-style) objective instead of input MSE (Gate 1) | — | **worse** than input-space PC (73.7 vs 75.5); ≈ random-init; degenerates into smoothness |
+| raw 200 ms EEG tokens (Gate 2) | 75.5 (= DE) | +1.2 fine-tuned, +14.7 frozen |
+| per-electrode vs structured tokens (Gate 2) | per-electrode ≥ structured on 2-ch sleep | — |
+| streaming evaluation vs bidirectional twin (Gate 3) | **causal +2.8 / +5.0 online**, 1/190 compute | — |
+
+So the verdict of this report stands and sharpens: the input representation and the causal
+architecture are where the value is; predictive-coding pretraining stays at ~+1–2.5 points on
+sleep and nothing elsewhere, whatever the input or the target space.

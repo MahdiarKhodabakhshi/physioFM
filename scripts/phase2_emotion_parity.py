@@ -188,6 +188,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--pc_dir", default=None)
     ap.add_argument("--rand_dir", default=None)
+    ap.add_argument("--latent_dir", default=None, help="latent-objective model dir (arm physiofm_latent)")
     ap.add_argument("--raw", action="store_true")
     ap.add_argument("--datasets", nargs="+", default=["seed_iv"])
     ap.add_argument("--classifier", default="logreg")
@@ -216,6 +217,9 @@ def main() -> None:
         if args.pc_dir:
             feature_sets["physiofm_pc"] = extract_model_segments(
                 Path(args.pc_dir), trials, device, args.batch_size, args.shuffle_time, args.shuffle_seed)
+        if args.latent_dir:
+            feature_sets["physiofm_latent"] = extract_model_segments(
+                Path(args.latent_dir), trials, device, args.batch_size, args.shuffle_time, args.shuffle_seed)
         if args.rand_dir:
             feature_sets["physiofm_rand"] = extract_model_segments(
                 Path(args.rand_dir), trials, device, args.batch_size, args.shuffle_time, args.shuffle_seed)

@@ -6,6 +6,16 @@ the prediction target are on the table.*
 
 Written 2026-07-29, after the root-cause diagnostic ([[EXP-0017]]).
 
+> **OUTCOME (executed 2026-08-18/19 — see `docs/NEXT_PHASE_RESULTS.md`, [[EXP-0020]]–[[EXP-0023]]).**
+> Gate 0: tf64 fails the headroom rule (sleep +2.3 vs DE +1.7; seizure none) but lifts the fine-tuned
+> architecture to 77.9 % / κ .71 on sleep while pretraining shrinks to +0.85. Gate 1: latent targets do
+> **not** beat input-space PC (sleep 73.7 vs 75.5 over 4 seeds; seizure indistinguishable) — five variants,
+> all at random-init level; the latent objective degenerates into smoothness on the per-epoch corpora.
+> Gate 2: raw 200 ms tokens reach parity with DE (75.5), pretraining +1.2 fine-tuned (+14.7 frozen);
+> per-electrode ≥ structured on 2-ch sleep. Gate 3: **confirmed** — causal beats its bidirectional twin
+> online by +2.8 / +5.0 at 1/190 the compute. Net: R1/R2 fixes do not rescue predictive-coding
+> pretraining; the architecture + streaming claims and the frozen-probe-inflation finding get stronger.
+
 ---
 
 ## 1. What the diagnosis says any fix must satisfy
