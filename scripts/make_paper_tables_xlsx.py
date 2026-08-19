@@ -65,9 +65,30 @@ TITLE_FONT = Font(bold=True, size=12, color="17203A")
 NUM_ALIGN = Alignment(horizontal="right", vertical="center")
 
 
+FINAL_FILL = PatternFill("solid", fgColor="C8EBE7")
+FINAL_FONT = Font(bold=True, color="0E5C5B")
+CONTROL_FILL = PatternFill("solid", fgColor="EEF1F6")
+# (block-title prefix, row label, column header) -> "final" | "control"
+FINAL_CELLS = {
+    ("Sleep-EDF-78 — subject-disjoint", "tf64 (2×64)", "Pretrained"): "final",
+    ("Sleep-EDF-78 — subject-disjoint", "tf64 (2×64)", "No pretrain"): "control",
+    ("Sleep-EDF-78 — Cohen", "tf64", "Pretrained"): "final",
+    ("Sleep-EDF-78 — Cohen", "tf64", "No pretrain"): "control",
+    ("CHB-MIT", "Fine-tuned — pretrained", "bal-acc %"): "final",
+    ("CHB-MIT", "Fine-tuned — pretrained", "ROC-AUC"): "final",
+    ("CHB-MIT", "Fine-tuned — no pretrain", "bal-acc %"): "control",
+    ("CHB-MIT", "Fine-tuned — no pretrain", "ROC-AUC"): "control",
+    ("Streaming", "Causal — pretrained", "Offline (whole window)"): "final",
+    ("Streaming", "Causal — pretrained", "Online (past only)"): "final",
+    ("Streaming", "Causal — no pretrain", "Offline (whole window)"): "control",
+    ("Streaming", "Causal — no pretrain", "Online (past only)"): "control",
+}
+
+
 def write_blocks(ws, blocks, widths):
     """Clean numbers-only sheet: a list of (title, headers, rows[, note]) blocks separated by a blank row."""
-    r = 1
+    ws.cell(row=1, column=1, value="FINAL METHOD = green cells: structured tokens (tf64 on sleep; DE on CHB-MIT — tf64 not run there) + causal decoder + input-space PC pretraining, fine-tuned end-to-end. Grey = its matched no-pretrain control (same architecture, random init).").font = Font(italic=True, color="0E5C5B")
+    r = 3
     for block in blocks:
         title, headers, rows = block[0], block[1], block[2]
         note = block[3] if len(block) > 3 else None
@@ -85,6 +106,11 @@ def write_blocks(ws, blocks, widths):
                 cell.alignment = Alignment(horizontal="left", vertical="center") if c == 1 else NUM_ALIGN
                 if isinstance(v, float) and abs(v) >= 10:
                     cell.number_format = "0.0"   # accuracies; deltas / AUC / kappa keep their own precision
+                for (tp, rl, ch), kind in FINAL_CELLS.items():
+                    if title.startswith(tp) and row[0] == rl and headers[c - 1] == ch:
+                        cell.fill = FINAL_FILL if kind == "final" else CONTROL_FILL
+                        if kind == "final":
+                            cell.font = FINAL_FONT
             r += 1
         if note:
             ws.cell(row=r, column=1, value=note).font = Font(italic=True, color="5B6579", size=9)
