@@ -50,6 +50,11 @@ ARCH = {
     "sleep_edf_raw": "data/physiofm/raw_tokens/sleep_edf_raw200ms.npz",
     "sleep_edf_raw_perch": "data/physiofm/raw_tokens/sleep_edf_raw200ms_perch.npz",
     "chbmit_raw": "data/physiofm/raw_tokens/chbmit_raw200ms.npz",
+    # External sleep validation (docs/SLEEP_DATASET_CANDIDATES.md): HMC, 151 clinical
+    # PSGs, 4 EEG @ 256 Hz, tf64 tokens (4 x 64). *_pretrain = subjects SN001-SN125
+    # only (fixed-split train+val) so pretraining/standardizer never see test subjects.
+    "hmc_tf64": "data/physiofm/tf_features/hmc_tf64.npz",
+    "hmc_tf64_pretrain": "data/physiofm/tf_features/hmc_tf64_pretrain.npz",
 }
 
 # Tokens per labelled epoch for each archive (1 = one token per epoch, the DE default).
