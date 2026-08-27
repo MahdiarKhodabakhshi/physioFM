@@ -40,16 +40,21 @@ LOG = logging.getLogger("sleep_ft")
 N_CLASSES = 5
 
 
-def build(ckpt, device):
-    import torch.nn as nn
+def build(ckpt, device, head_kind="linear", lookahead=None, window=None):
+    from physiofm.context_head import build_head
 
     a = ckpt["args"]
     enc = PhysioFMS(n_cb=ckpt["n_cb"], p_in=a["p_in"], p_out=a["p_out"], variant=a["variant"],
                     hidden=a["hidden"], layers=a["layers"], heads=a["heads"],
                     embedder=a.get("embedder", "linear"), causal=bool(a.get("causal", 1)))
     enc.load_state_dict(ckpt["state_dict"])
-    head = nn.Linear(enc.d, N_CLASSES)
+    head = build_head(head_kind, enc.d, N_CLASSES, lookahead=lookahead, window=window)
     return enc.to(device), head.to(device)
+
+
+def apply_head(head, feats, lengths=None):
+    import torch.nn as nn
+    return head(feats) if isinstance(head, nn.Linear) else head(feats, lengths)
 
 
 def pool_epochs(h, tpe):
@@ -137,13 +142,14 @@ def encode_group(enc, xs_groups, device, tpe):
     return h.reshape(b, m, h.shape[1], h.shape[2]).mean(1)
 
 
-def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w, label_frac=1.0, tpe=1, merge=1, seed=42):
+def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w, label_frac=1.0, tpe=1, merge=1, seed=42,
+             head_kind="linear", lookahead=None, window=None):
     import torch
     import torch.nn.functional as F
     from sklearn.metrics import accuracy_score, cohen_kappa_score, f1_score
 
     torch.manual_seed(seed)
-    enc, head = build(ckpt, device)
+    enc, head = build(ckpt, device, head_kind, lookahead, window)
     params = trainable(enc, head, mode)
     opt = torch.optim.AdamW(params, lr=lr, weight_decay=0.01)
     w = torch.tensor(class_w, dtype=torch.float32, device=device)
@@ -163,7 +169,7 @@ def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w, la
             for r, l in enumerate(ls):
                 y[r, :len(l)] = l
             yt = torch.from_numpy(y).to(device)
-            logits = head(feats)
+            logits = apply_head(head, feats, [len(l) for l in ls])
             loss = F.cross_entropy(logits.reshape(-1, N_CLASSES), yt.reshape(-1),
                                    weight=w, ignore_index=-100)
             if torch.isnan(loss):
@@ -179,7 +185,7 @@ def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w, la
     with torch.no_grad():
         for g, l in group_members(te, merge):
             for cs, cl in chunk_group(g, l, max_len, tpe):
-                p = head(encode_group(enc, [cs], device, tpe))[0, :len(cl)].argmax(-1).cpu().numpy()
+                p = apply_head(head, encode_group(enc, [cs], device, tpe))[0, :len(cl)].argmax(-1).cpu().numpy()
                 preds.append(p); gts.append(cl)
     p = np.concatenate(preds); g = np.concatenate(gts)
     return (accuracy_score(g, p) * 100,
@@ -208,6 +214,9 @@ def main() -> None:
     ap.add_argument("--tag", default="", help="suffix appended to the mode column (e.g. _seed1)")
     ap.add_argument("--merge_every", type=int, default=1, help="per-electrode ablation: group m channel-sequences per recording")
     ap.add_argument("--ft_seed", type=int, default=42)
+    ap.add_argument("--head", choices=["linear", "context"], default="linear")
+    ap.add_argument("--lookahead", type=int, default=-1, help="context head: -1 = unrestricted bidirectional; k>=0 = bounded future window")
+    ap.add_argument("--ctx_window", type=int, default=-1, help="context head: symmetric band |i-j|<=w (ladder-matched context); -1 = unrestricted")
     args = ap.parse_args()
     _f13.ARCH_KEY = args.arch_key
     if args.labels:
@@ -232,7 +241,8 @@ def main() -> None:
         ckpt = torch.load(mdir / "model.pt", map_location=device, weights_only=False)
         mean, std = load_standardizer(mdir / "standardizer.npz")
         seqs = [standardize(t.values, mean, std) for t in trials]
-        # class weights from the training pool (sleep is heavily imbalanced toward N2)
+        # class weights from the WHOLE corpus incl. test folds (pre-existing SEDF choice,
+        # identical across arms; HMC/P2018 use train-only — noted in EXP-0027 review)
         allc = np.concatenate(labels)
         cnt = np.bincount(allc[allc >= 0], minlength=N_CLASSES).astype(np.float64)
         class_w = (cnt.sum() / (N_CLASSES * np.maximum(cnt, 1))).tolist()
@@ -245,7 +255,9 @@ def main() -> None:
                 te = [(seqs[i], labels[i]) for i in range(len(trials)) if te_m[i]]
                 a, f, kp = run_fold(ckpt, tr, te, args.mode, args.epochs, args.lr,
                                     args.batch, args.max_len, device, class_w, frac, tpe, args.merge_every,
-                                    seed=args.ft_seed)
+                                    seed=args.ft_seed, head_kind=args.head,
+                                    lookahead=None if args.lookahead < 0 else args.lookahead,
+                                    window=None if args.ctx_window < 0 else args.ctx_window)
                 accs.append(a); f1s.append(f); kaps.append(kp)
             LOG.info("RESULT %-14s mode=%s frac=%.2f acc=%.2f±%.2f f1=%.2f±%.2f kappa=%.3f±%.3f (%d folds)",
                      arm, args.mode, frac, np.mean(accs), np.std(accs), np.mean(f1s), np.std(f1s),

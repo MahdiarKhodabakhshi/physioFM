@@ -55,6 +55,8 @@ def main() -> None:
     ap.add_argument("--max_len", type=int, default=400)
     ap.add_argument("--ft_seed", type=int, default=42)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--head", choices=["linear", "context"], default="linear")
+    ap.add_argument("--lookahead", type=int, default=-1)
     ap.add_argument("--out_csv", default="results/phase4/p2018/finetune.csv")
     args = ap.parse_args()
 
@@ -91,7 +93,8 @@ def main() -> None:
 
             res = run_split(ckpt, tr, ev, args.mode, args.epochs, args.lr, args.batch,
                             args.max_len, device, class_w, args.ft_seed,
-                            collect=("test",))
+                            collect=("test",), head_kind=args.head,
+                            lookahead=None if args.lookahead < 0 else args.lookahead)
             best_ep = res.pop("_best_epoch")
             m = res["test"]
             LOG.info("RESULT %s fold%d best_ep=%d test acc=%.2f bac=%.2f kappa=%.3f mf1=%.2f wf1=%.2f (n=%d)",

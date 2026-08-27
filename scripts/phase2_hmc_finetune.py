@@ -35,7 +35,7 @@ from physiofm.hmc import split_masks
 from physiofm.sleep_edf import load_sleep_labels
 from physiofm.structured_data import ARCH, load_standardizer, standardize
 from scripts.phase2_sleep_finetune import (
-    N_CLASSES, build, chunk, mask_labels, trainable,
+    N_CLASSES, apply_head, build, chunk, mask_labels, trainable,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -55,14 +55,14 @@ def _eval_pairs(enc, head, pairs, max_len, device):
     with torch.no_grad():
         for s, l in pairs:
             for cs, cl in chunk(s, l, max_len):
-                p = head(encode_batch(enc, [cs], device))[0, :len(cl)].argmax(-1).cpu().numpy()
+                p = apply_head(head, encode_batch(enc, [cs], device))[0, :len(cl)].argmax(-1).cpu().numpy()
                 m = cl >= 0
                 preds.append(p[m]); gts.append(cl[m])
     return np_.concatenate(preds), np_.concatenate(gts)
 
 
 def run_split(ckpt, tr, ev_sets, mode, epochs, lr, batch, max_len, device, class_w, seed,
-              collect=()):
+              collect=(), head_kind="linear", lookahead=None):
     """Train on ``tr``; select the best epoch by VALIDATION Cohen kappa (the published
     ladder's monitor score — NeuroLM App. D.2); report all metrics for every ev set at
     that best epoch (plus the epoch index under key ``_best_epoch``)."""
@@ -73,7 +73,7 @@ def run_split(ckpt, tr, ev_sets, mode, epochs, lr, batch, max_len, device, class
                                  cohen_kappa_score, f1_score)
 
     torch.manual_seed(seed)
-    enc, head = build(ckpt, device)
+    enc, head = build(ckpt, device, head_kind, lookahead)
     params = trainable(enc, head, mode)
     opt = torch.optim.AdamW(params, lr=lr, weight_decay=0.01)
     w = torch.tensor(class_w, dtype=torch.float32, device=device)
@@ -90,7 +90,7 @@ def run_split(ckpt, tr, ev_sets, mode, epochs, lr, batch, max_len, device, class
             y = np.full((len(idx), feats.shape[1]), -100, dtype=np.int64)
             for r, l in enumerate(ls):
                 y[r, :len(l)] = l
-            loss = F.cross_entropy(head(feats).reshape(-1, N_CLASSES),
+            loss = F.cross_entropy(apply_head(head, feats, [len(l) for l in ls]).reshape(-1, N_CLASSES),
                                    torch.from_numpy(y).to(device).reshape(-1),
                                    weight=w, ignore_index=-100)
             if torch.isnan(loss):
@@ -141,6 +141,8 @@ def main() -> None:
     ap.add_argument("--labels", default="data/physiofm/tf_features/hmc_labels.npz")
     ap.add_argument("--ft_seed", type=int, default=42)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--head", choices=["linear", "context"], default="linear")
+    ap.add_argument("--lookahead", type=int, default=-1)
     ap.add_argument("--out_csv", default="results/phase4/hmc/finetune.csv")
     args = ap.parse_args()
 
@@ -175,7 +177,9 @@ def main() -> None:
         for frac in sorted(args.label_fracs):
             tr_f = mask_labels([(s, l) for s, l in tr], frac, seed=args.ft_seed) if frac < 1.0 else tr
             res = run_split(ckpt, tr_f, ev, args.mode, args.epochs, args.lr, args.batch,
-                            args.max_len, device, class_w, args.ft_seed)
+                            args.max_len, device, class_w, args.ft_seed,
+                            head_kind=args.head,
+                            lookahead=None if args.lookahead < 0 else args.lookahead)
             best_ep = res.pop("_best_epoch")
             res.pop("_pred", None)
             LOG.info("best epoch by val kappa: %d", best_ep)
