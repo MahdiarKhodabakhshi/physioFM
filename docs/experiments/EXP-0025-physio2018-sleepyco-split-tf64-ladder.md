@@ -1,7 +1,7 @@
 ---
 id: EXP-0025
 title: Physio2018 (994 subjects) — SleePyCo-split validation + the scale test of PC pretraining
-status: running
+status: done
 created: 2026-08-27
 run_date: 2026-08-27
 agent: claude-code
@@ -9,7 +9,7 @@ phase: external-validation
 verified: no
 tags: physio2018, sleep, tf64, external-validation, scale
 commits: bb8bf5d
-verdict: TBD (6ch done; c3 arm running)
+verdict: H2 REFUTED at scale, H1 quantified. Pretraining: dkappa .0001 (6ch) / .0007 (c3) at 994 subjects - the in-domain null is not a small-data artifact (4th replication). Architecture: 6ch acc 76.14 / MF1 75.14 / kappa .684; c3 single-channel 74.26 / 73.11 / .659 vs SleePyCo 80.9/78.9/.737 on the IDENTICAL split - the 6.6-acc single-channel gap decomposes into ~1.9 recovered by multichannel tokens and ~4.7 from model class (causal single-epoch tokens vs bidirectional multi-epoch context).
 ---
 
 # EXP-0025 — Physio2018: third sleep corpus, 994 subjects
@@ -64,7 +64,15 @@ Published (C3-A2 single-channel, bidirectional, multi-epoch context): SleePyCo
 80.9 / 78.9 / .737 · XSleepNet2 80.3 / 78.6 / .732 · SeqSleepNet 79.4 / 77.6 / .719 ·
 U-Time 78.8 / 77.4 / .714. Per-fold κ range .654–.710.
 
-C3-only arm: TBD.
+C3-M2 single-channel (input-identical to the published rows), pooled, seed 42:
+
+| arm | acc | MF1 | κ | BAC | wF1 |
+|---|---|---|---|---|---|
+| PC-pretrained | 74.26 | 73.11 | .6592 | 75.77 | 74.40 |
+| random-init | 74.35 | 72.99 | .6599 | 75.60 | 74.43 |
+
+(The c3 fine-tune initially crashed on an ARCH KeyError — dead fallback ordering in
+phase2_p2018_finetune.py, caught by the EXP-0026 pre-launch review — fixed and rerun.)
 
 ## 5. Interpretation — agent's reading
 1. **H2 refuted at scale: Δκ = 0.0001 with 994 subjects.** The in-domain pretraining
@@ -75,12 +83,14 @@ C3-only arm: TBD.
    (competitive with the FM ladder) and Gate 3 (causal wins streaming +2.8/+5.0),
    the architecture story is consistent: a different operating point, ~3–5 acc below
    offline bidirectional SOTA, ahead online.
-3. TBD after c3: how much of the gap is the channel count vs the context/model class.
+3. c3 decomposition: at matched single-channel input we are 6.6 acc / .078 κ below
+   SleePyCo; 6 channels recover 1.9 acc / .025 κ. The residual ~4.7 acc is the
+   context/model-class gap — the quantity the streaming claim (Gate 3) trades against.
 
 ## 6. ✅ Your verification — *(reserved for Mahdiar)*
 
 ## 7. Commits
-bb8bf5d (pipeline), TBD (results).
+bb8bf5d (pipeline), b2673b4 (6ch), d14ca59 (c3 KeyError fix), this commit (c3 results).
 
 ## 8. Links
 - docs/SLEEP_DATASET_CANDIDATES.md; EXP-0024 (HMC).
