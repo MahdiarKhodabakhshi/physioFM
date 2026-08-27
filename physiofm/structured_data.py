@@ -55,6 +55,9 @@ ARCH = {
     # only (fixed-split train+val) so pretraining/standardizer never see test subjects.
     "hmc_tf64": "data/physiofm/tf_features/hmc_tf64.npz",
     "hmc_tf64_pretrain": "data/physiofm/tf_features/hmc_tf64_pretrain.npz",
+    # Physio2018 (CinC training set): 994 labeled records, 6 EEG @ 200 Hz, tf64 (6 x 64).
+    # 5-fold subject-disjoint protocol; per-fold pretrain corpora are built on the fly.
+    "p2018_tf64": "data/physiofm/tf_features/p2018_tf64.npz",
 }
 
 # Tokens per labelled epoch for each archive (1 = one token per epoch, the DE default).
@@ -69,7 +72,12 @@ TOKENS_PER_EPOCH = {
 def load_corpus(datasets: list[str]) -> list[DETrial]:
     trials: list[DETrial] = []
     for ds in datasets:
-        trials.extend(load_de_archive(ARCH[ds]))
+        # Unknown keys are treated as archive paths (ad-hoc corpora, e.g. the
+        # per-fold Physio2018 pretraining archives).
+        path = ARCH.get(ds, ds)
+        if ds not in ARCH and not Path(path).exists():
+            raise KeyError(f"{ds}: not an ARCH key and not an existing archive path")
+        trials.extend(load_de_archive(path))
     return trials
 
 

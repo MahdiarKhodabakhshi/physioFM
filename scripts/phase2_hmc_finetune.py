@@ -61,7 +61,8 @@ def _eval_pairs(enc, head, pairs, max_len, device):
     return np_.concatenate(preds), np_.concatenate(gts)
 
 
-def run_split(ckpt, tr, ev_sets, mode, epochs, lr, batch, max_len, device, class_w, seed):
+def run_split(ckpt, tr, ev_sets, mode, epochs, lr, batch, max_len, device, class_w, seed,
+              collect=()):
     """Train on ``tr``; select the best epoch by VALIDATION Cohen kappa (the published
     ladder's monitor score — NeuroLM App. D.2); report all metrics for every ev set at
     that best epoch (plus the epoch index under key ``_best_epoch``)."""
@@ -109,9 +110,11 @@ def run_split(ckpt, tr, ev_sets, mode, epochs, lr, batch, max_len, device, class
     enc.load_state_dict(best[2]); head.load_state_dict(best[3])
     enc.to(device); head.to(device)
     enc.eval(); head.eval()
-    out = {"_best_epoch": best[1] + 1}
+    out = {"_best_epoch": best[1] + 1, "_pred": {}}
     for name, pairs in ev_sets.items():
             p, g = _eval_pairs(enc, head, pairs, max_len, device)
+            if name in collect:
+                out["_pred"][name] = (p, g)
             out[name] = dict(
                 acc=accuracy_score(g, p) * 100,
                 bac=balanced_accuracy_score(g, p) * 100,
@@ -174,6 +177,7 @@ def main() -> None:
             res = run_split(ckpt, tr_f, ev, args.mode, args.epochs, args.lr, args.batch,
                             args.max_len, device, class_w, args.ft_seed)
             best_ep = res.pop("_best_epoch")
+            res.pop("_pred", None)
             LOG.info("best epoch by val kappa: %d", best_ep)
             for split_name, m in res.items():
                 LOG.info("RESULT %-13s %s frac=%.2f %-4s acc=%.2f bac=%.2f kappa=%.3f mf1=%.2f wf1=%.2f (n=%d)",
