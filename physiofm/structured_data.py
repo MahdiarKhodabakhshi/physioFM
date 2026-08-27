@@ -58,6 +58,11 @@ ARCH = {
     # Physio2018 (CinC training set): 994 labeled records, 6 EEG @ 200 Hz, tf64 (6 x 64).
     # 5-fold subject-disjoint protocol; per-fold pretrain corpora are built on the fly.
     "p2018_tf64": "data/physiofm/tf_features/p2018_tf64.npz",
+    # EXP-0026 cross-corpus transfer: per-electrode 1x64 slices of the tf64 archives
+    # (channel-count-agnostic tokens; --merge_every C regroups at evaluation).
+    "sleep_edf_tf64_perch": "data/physiofm/tf_features/sleep_edf_tf64_perch.npz",
+    "hmc_tf64_perch": "data/physiofm/tf_features/hmc_tf64_perch.npz",
+    "p2018_tf64_perch": "data/physiofm/tf_features/p2018_tf64_perch.npz",
 }
 
 # Tokens per labelled epoch for each archive (1 = one token per epoch, the DE default).

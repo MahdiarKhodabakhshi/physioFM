@@ -63,9 +63,9 @@ def main() -> None:
                                  cohen_kappa_score, f1_score)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    arch_path = ARCH[args.arch_key]
-    if args.arch_key == "p2018_tf64_c3":
-        arch_path = "data/physiofm/tf_features/p2018_tf64_c3.npz"
+    arch_path = ARCH.get(args.arch_key, "data/physiofm/tf_features/p2018_tf64_c3.npz"
+                         if args.arch_key == "p2018_tf64_c3" else None)
+    assert arch_path, f"unknown arch_key {args.arch_key}"
     trials = load_de_archive(arch_path)
     labels, subj, night, key = load_sleep_labels(args.labels)
     assert len(trials) == len(labels) == 994

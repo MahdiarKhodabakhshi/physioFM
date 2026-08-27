@@ -137,22 +137,22 @@ def encode_group(enc, xs_groups, device, tpe):
     return h.reshape(b, m, h.shape[1], h.shape[2]).mean(1)
 
 
-def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w, label_frac=1.0, tpe=1, merge=1):
+def run_fold(ckpt, tr, te, mode, epochs, lr, batch, max_len, device, class_w, label_frac=1.0, tpe=1, merge=1, seed=42):
     import torch
     import torch.nn.functional as F
     from sklearn.metrics import accuracy_score, cohen_kappa_score, f1_score
 
-    torch.manual_seed(42)
+    torch.manual_seed(seed)
     enc, head = build(ckpt, device)
     params = trainable(enc, head, mode)
     opt = torch.optim.AdamW(params, lr=lr, weight_decay=0.01)
     w = torch.tensor(class_w, dtype=torch.float32, device=device)
 
     tr_chunks = [c for g, l in group_members(tr, merge) for c in chunk_group(g, l, max_len, tpe)]
-    tr_chunks = mask_labels(tr_chunks, label_frac, seed=42)
+    tr_chunks = mask_labels(tr_chunks, label_frac, seed=seed)
     for ep in range(epochs):
         enc.train(); head.train()
-        order = np.random.default_rng(ep).permutation(len(tr_chunks))
+        order = np.random.default_rng(seed * 1000 + ep).permutation(len(tr_chunks))
         tot, n = 0.0, 0
         for b0 in range(0, len(order), batch):
             idx = order[b0:b0 + batch]
@@ -244,7 +244,8 @@ def main() -> None:
                 tr = [(seqs[i], labels[i]) for i in range(len(trials)) if not te_m[i]]
                 te = [(seqs[i], labels[i]) for i in range(len(trials)) if te_m[i]]
                 a, f, kp = run_fold(ckpt, tr, te, args.mode, args.epochs, args.lr,
-                                    args.batch, args.max_len, device, class_w, frac, tpe, args.merge_every)
+                                    args.batch, args.max_len, device, class_w, frac, tpe, args.merge_every,
+                                    seed=args.ft_seed)
                 accs.append(a); f1s.append(f); kaps.append(kp)
             LOG.info("RESULT %-14s mode=%s frac=%.2f acc=%.2f±%.2f f1=%.2f±%.2f kappa=%.3f±%.3f (%d folds)",
                      arm, args.mode, frac, np.mean(accs), np.std(accs), np.mean(f1s), np.std(f1s),
