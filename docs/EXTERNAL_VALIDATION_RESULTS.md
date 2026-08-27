@@ -11,7 +11,8 @@ EXP-0026 (transfer). All fine-tuned, subject-disjoint, published-protocol evalua
 | The tf64 + causal-decoder architecture transfers across sleep corpora | HMC fixed split: BAC 73.8 / κ .668 / wF1 74.5 (8 seeds) — 2nd of 8 on BAC vs the LaBraM/CBraMod/REVE/CSBrain ladder at ~1/100th params; P2018 SleePyCo split: 76.1 acc / κ .684 (6 ch) | **Confirmed, 2 new datasets** |
 | In-domain PC pretraining helps | HMC paired Δ +0.00 ± 1.25 BAC (8 seeds); P2018 Δκ ≤ .001 at 994 subjects (6 ch AND single-channel); SEDF +0.85 (4 seeds) reads as noise | **Null — 4th replication; scale ruled out as excuse** |
 | Cross-corpus transfer (the literature's positive regime; proposal Phase 3) | P2018 donor → SEDF-78, full weights via per-electrode tokens: **+3.14 ± 0.33 acc over matched random-init** (4 replicates, 2 independent donors), ≈ parity with same-corpus PC; trunk-only transfer: nothing (SEDF & HMC) | **CONFIRMED — first robust pretraining benefit** |
-| Best SEDF-78 number | per-electrode + P2018 transfer: 78.35 mean / 79.1 best (vs 77.9 structured) | New project best |
+| Best SEDF-78 number | per-electrode + P2018 transfer: 78.35 mean / 79.1 best; structured @ e16 FT: 78.4–79.0 (any head) | New project best |
+| The SOTA gap is missing bidirectional context | EXP-0027: adding the SOTA models' sequence stage (bidirectional transformer head, matched window) moves ≤1 acc at e8 and ≈0 at matched budget, on all three datasets — consistent with EXP-0023's twin (+0.9 offline). Residual gap = the epoch-level feature extractor (fixed Welch tokens vs learned intra-epoch encoders) | **Refuted — strengthens the streaming claim: causality costs ≈1 point** |
 | Gap to bidirectional supervised SOTA | P2018 c3 (input-identical): −6.6 acc to SleePyCo; 6-ch recovers +1.9; residual ≈ model class/context — the quantity the causal/streaming claim (Gate 3) trades against | Quantified |
 
 ## Protocol notes (for the paper's reproducibility appendix)
