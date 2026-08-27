@@ -1,7 +1,7 @@
 ---
 id: EXP-0026
 title: Cross-corpus transfer — P2018-pretrained donors fine-tuned on Sleep-EDF-78 and HMC
-status: running
+status: done
 created: 2026-08-27
 run_date: 2026-08-27
 agent: claude-code
@@ -9,7 +9,7 @@ phase: external-validation
 verified: no
 tags: transfer, pretraining, p2018, sleep_edf, hmc, perch
 commits: TBD
-verdict: TBD
+verdict: HYPOTHESIS CONFIRMED for full-weight transfer; refuted for trunk-only. SEDF-78 per-electrode, 4 replicates (donor seeds 42/1 x FT seeds): P2018-transfer 78.35 acc / kappa .712 vs matched random-init 75.21 / .672 -> +3.14 +/- 0.33 acc, ALL replicates positive - the first robust pretraining benefit in the project, in the literature's +2.3..+6.6 transfer range. Transfer ~= same-corpus PC (+0.55 +/- 0.71): pretraining on a bigger foreign corpus fully substitutes for target-corpus pretraining. Trunk-only transfer does nothing (SEDF 76.55 ~ rand 76.78; HMC 73.11 <= rand 73.65) - the benefit needs the full model, which only channel-agnostic per-electrode tokens allow. Bonus: 78.79-79.10 (best transfer folds) is the project's best SEDF number, beating structured 77.9.
 ---
 
 # EXP-0026 — Cross-corpus transfer (the literature's positive regime)
@@ -69,16 +69,50 @@ harness, FT full, best-epoch-by-val-κ on HMC / fixed 8 ep on SEDF):
   lookup before the fallback) — fixed, relaunched.
 - 2026-08-27 05:1x — queue launched (`scripts/run_transfer.sh`).
 
-## 4. Results  *(run date: TBD)*
-TBD.
+## 4. Results  *(run date: 2026-08-27)*
+
+**SEDF-78 per-electrode (1×64, merge 2), 5-fold, acc ± fold-sd / κ:**
+
+| replicate (donor/ft seed) | random-init | same-corpus PC | **P2018 transfer (full)** | tr−rand |
+|---|---|---|---|---|
+| d42 / ft42 | 75.85 ± 2.33 / .679 | 78.26 ± 2.94 / .710 | **78.79 ± 2.29 / .717** | +2.94 |
+| d42 / ft1 | 74.81 / .668 | 77.54 / .702 | **77.91 / .707** | +3.10 |
+| d42 / ft2 | 75.41 / .675 | 77.48 / .701 | **79.10 / .721** | +3.69 |
+| d1 / ft1 (independent donor) | 74.77 / .667 | 77.91 / .705 | 77.58 / .702 | +2.81 |
+| **mean** | 75.21 / .672 | 77.80 / .705 | **78.35 / .712** | **+3.14 ± 0.33** |
+
+transfer − same-corpus-pc = +0.55 ± 0.71 (≈ parity; recall the SEDF pc arm's corpus
+includes test-subject unlabeled data, the donor's does not — §2b).
+
+**Trunk-only transfer (structured tokens):** SEDF 76.55 ± 2.32 / .688 vs rand
+76.78 ± 2.97 / .690 vs pc 77.66 ± 2.43 / .702 (seed 42). HMC (e20, fixed split):
+transfer BAC 73.11 / κ .657 vs rand 73.65 / .663 vs pc 73.70 / .674. Trunk alone: nothing.
+
+CSVs: results/phase4/transfer/{sedf_perch_ft,sedf_structured_ft,hmc_ft}.csv.
 
 ## 5. Interpretation — agent's reading
-TBD.
+1. **The pretraining story flips in exactly the regime the literature predicted.**
+   In-domain: null (4 replications, EXP-0024/0025). Cross-corpus, full-weight:
+   +3.1 ± 0.3 acc over matched random-init, every replicate positive, two independent
+   donors. This is the proposal's Phase-3 claim, finally demonstrated.
+2. **Mechanism is localized**: trunk transplant does nothing on either target; the
+   benefit requires the pretrained input/output blocks WITH the trunk — only
+   channel-count-agnostic per-electrode tokens make that possible across corpora.
+   Per-electrode tokenization is thus not just an ablation: it is the transfer vehicle
+   (consistent with gate-2, where per-electrode raw also showed the largest in-domain
+   pretraining delta, +1.8).
+3. Transfer ≈ same-corpus pretraining ⇒ a single big-corpus pretrain substitutes for
+   per-target pretraining — the foundation-model deployment story, at 2.65 M params.
+4. New best SEDF-78 number: 78.35 mean / 78.8–79.1 best replicates (vs 77.9
+   structured) — per-electrode + transfer wins outright.
+5. Caveats stand (§2b): not compute-matched (donor saw ~19× more steps); SEDF pc arm
+   has the exposure advantage, transfer does not. SHHS (pending access) is the natural
+   scale-up: 5.8k-subject donor → SEDF/HMC/P2018 targets.
 
 ## 6. ✅ Your verification — *(reserved for Mahdiar)*
 
 ## 7. Commits
-TBD.
+d14ca59 (pipeline + review fixes), this commit (results).
 
 ## 8. Links
 - EXP-0024 (HMC), EXP-0025 (P2018), docs/SLEEP_DATASET_CANDIDATES.md §02.
