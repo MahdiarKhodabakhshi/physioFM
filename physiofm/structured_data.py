@@ -63,6 +63,12 @@ ARCH = {
     "sleep_edf_tf64_perch": "data/physiofm/tf_features/sleep_edf_tf64_perch.npz",
     "hmc_tf64_perch": "data/physiofm/tf_features/hmc_tf64_perch.npz",
     "p2018_tf64_perch": "data/physiofm/tf_features/p2018_tf64_perch.npz",
+    # EXP-0028: frozen REVE-base (69M-param EEG foundation model) epoch embeddings —
+    # token = (4 ch x 512), per-channel mean over 1-s patches. *_pretrain = SN001-127.
+    "hmc_reve": "data/physiofm/reve_features/hmc_reve.npz",
+    "hmc_reve_pretrain": "data/physiofm/reve_features/hmc_reve_pretrain.npz",
+    "hmc_revelarge": "data/physiofm/reve_features/hmc_revelarge.npz",
+    "hmc_revelarge_pretrain": "data/physiofm/reve_features/hmc_revelarge_pretrain.npz",
 }
 
 # Tokens per labelled epoch for each archive (1 = one token per epoch, the DE default).
