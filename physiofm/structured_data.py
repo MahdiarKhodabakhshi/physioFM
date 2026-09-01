@@ -71,6 +71,8 @@ ARCH = {
     "hmc_revelarge_pretrain": "data/physiofm/reve_features/hmc_revelarge_pretrain.npz",
     "sleep_edf_reve": "data/physiofm/reve_features/sleep_edf_reve.npz",
     "p2018_reve": "data/physiofm/reve_features/p2018_reve.npz",
+    "sleep_edf_reve_perch": "data/physiofm/reve_features/sleep_edf_reve_perch.npz",
+    "p2018_reve_perch": "data/physiofm/reve_features/p2018_reve_perch.npz",
 }
 
 # Tokens per labelled epoch for each archive (1 = one token per epoch, the DE default).
