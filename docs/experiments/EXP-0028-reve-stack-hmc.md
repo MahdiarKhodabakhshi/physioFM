@@ -98,7 +98,7 @@ CSV: results/phase4/reve_stack/finetune.csv; probe: probe.txt.
      the foundation-feature payoff tracks recording richness (4 ch/256 Hz HMC and
      6 ch/200 Hz P2018 gain; 2 ch/100 Hz SEDF doesn't).
    - Extraction costs: SEDF 13 min; P2018 60 min (994 records).
-   - Still open: REVE-Large stack (gate access pending).
+   - REVE-Large stack: DONE (see §6 of this list).
    CSVs: results/phase4/reve_stack/{sedf_finetune,p2018_finetune}.csv.
 5. **Rigor pass (2026-09-01 afternoon):**
    - HMC stack at 8 seeds (matching the tf64 ladder): balanced arm **BAC 75.21 ± 0.58 /
@@ -116,6 +116,18 @@ CSV: results/phase4/reve_stack/finetune.csv; probe: probe.txt.
      the whole pretraining story: both mechanisms inject cross-dataset structure;
      once one is present, the other is redundant.
    CSVs: results/phase4/reve_stack/transfer_ft.csv, context/sedf_structured.csv.
+6. **REVE-Large arm (2026-09-01 evening; H2 CONFIRMED — clean sweep):** frozen
+   REVE-Large (408M, dim 1216) + our causal decoder, 8 seeds, e20, fixed split:
+   - their-loss arm: **BAC 75.06 ± 0.70 / κ .705 ± .006 / wF1 76.99** — better than
+     the best published row on this split (REVE-Base full FT 74.01 / .698 / .764)
+     on **every metric**;
+   - balanced arm: **BAC 75.79 ± 0.54 / κ .695** (+1.8 BAC over the published best);
+   - probe controls: flattened-logreg 71.49/.640 (their attention-pool LP: 0.710) →
+     the sequence model adds ≈ +4–5 BAC over frozen-Large per-epoch classification.
+   - Extraction 18 min; pretrain 3 min/seed (batch 2); FT ~45 s/arm.
+   The best HMC number on the standard split is now: frozen REVE-Large + an 11M causal
+   PhysioFM-S decoder — no fine-tuning of the foundation model, one-epoch streaming
+   latency. CSV: results/phase4/reve_large/finetune.csv.
 
 ## 6. ✅ Your verification — *(reserved for Mahdiar)*
 

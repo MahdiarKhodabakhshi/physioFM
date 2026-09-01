@@ -19,7 +19,7 @@ EXP-0026 (transfer). All fine-tuned, subject-disjoint, published-protocol evalua
 
 | Corpus | Our tf64 | REVE stack (frozen REVE-base + our causal decoder) | Best published |
 |---|---|---|---|
-| HMC (BAC/κ) | 73.8 / .668 | **75.6 ± 0.3 / .685** (balanced loss) · 74.0 / **.695** (their loss) | REVE's own full FT 74.0 / .698 |
+| HMC (BAC/κ/wF1) | 73.8 / .668 / 74.5 | Base stack: 75.2 ± 0.6 / .684 (8 seeds) · **Large stack: 75.1–75.8 / .705 ± .006 / 77.0 — beats the best published row on every metric** | REVE-Base full FT 74.0 / .698 / 76.4 |
 | P2018 (acc/κ) | 76.1 / .684 | **78.3 / .710** | SleePyCo 80.9 / .737 (bidirectional) |
 | Sleep-EDF (acc/κ) | 77.6–79.0 / .70–.72 | 77.5–78.7 / .70–.71 (≈ parity) | 84.9 / .789 (bidirectional) |
 
