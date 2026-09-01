@@ -98,8 +98,24 @@ CSV: results/phase4/reve_stack/finetune.csv; probe: probe.txt.
      the foundation-feature payoff tracks recording richness (4 ch/256 Hz HMC and
      6 ch/200 Hz P2018 gain; 2 ch/100 Hz SEDF doesn't).
    - Extraction costs: SEDF 13 min; P2018 60 min (994 records).
-   - Still open: REVE-Large stack (gate access pending), REVE-feature transfer donors.
+   - Still open: REVE-Large stack (gate access pending).
    CSVs: results/phase4/reve_stack/{sedf_finetune,p2018_finetune}.csv.
+5. **Rigor pass (2026-09-01 afternoon):**
+   - HMC stack at 8 seeds (matching the tf64 ladder): balanced arm **BAC 75.21 ± 0.58 /
+     κ .684** (+1.2 over REVE's 74.01, robust); their-loss arm **κ .694 ± .004 /
+     wF1 76.08 / BAC 74.33** — statistical tie with their full fine-tune on κ/wF1,
+     ahead on BAC. Headline survives full seed support.
+   - e16 SEDF rows now 3-seed: tf64-linear pc **78.69 ± 0.18 / κ .713** (context head
+     +0.1 — EXP-0027 null confirmed at e16); REVE-stack e16 78.26 ≈ parity.
+   - **REVE-feature transfer (P2018-REVE perch donor → SEDF-REVE perch, 3 seeds):
+     transfer 77.90 ± 0.34 vs rand 77.57 ± 0.56 → Δ +0.3 ≈ 0** — unlike tf64 features
+     (+3.14). Reading: REVE's 60k-hour pretraining and our cross-corpus PC transfer
+     are SUBSTITUTES, not additive — REVE-perch rand (77.57) already sits where the
+     tf64 transfer arm landed (78.35-ish), i.e. the foundation encoder supplies the
+     domain-shift knowledge that transfer pretraining used to supply. Coherent with
+     the whole pretraining story: both mechanisms inject cross-dataset structure;
+     once one is present, the other is redundant.
+   CSVs: results/phase4/reve_stack/transfer_ft.csv, context/sedf_structured.csv.
 
 ## 6. ✅ Your verification — *(reserved for Mahdiar)*
 
