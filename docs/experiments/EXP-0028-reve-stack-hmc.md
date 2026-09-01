@@ -86,9 +86,20 @@ CSV: results/phase4/reve_stack/finetune.csv; probe: probe.txt.
    frozen features; loss weighting trades BAC vs κ/wF1 along their published trade-off.
 3. In-domain PC pretraining of the decoder: null again (5th replication) — on top of a
    foundation encoder there is even less for input-space PC to learn.
-4. Next: REVE-Large stack (frozen-Large probes at 0.710 alone — likely pushes the
-   balanced arm toward ~77 BAC); transfer donors on REVE features; Sleep-EDF/P2018
-   stacks (both corpora fully absent from REVE's pretraining).
+4. **Extension results (2026-09-01, same recipe on the other two corpora):**
+   - **P2018** (SleePyCo folds, pooled 892,200 test epochs): stack (rand) **78.25 acc /
+     MF1 77.32 / κ .7102** vs our tf64 76.09/.684 → **+2.2 acc / +.026 κ**; gap to
+     SleePyCo (80.9/.737) halves from 4.8 to 2.6 acc, and the stack passes
+     U-Time-class offline models (78.8/.714) while staying causal. pc arm 77.46/.7005
+     — in-domain PC null again.
+   - **Sleep-EDF-78**: stack ≈ our tf64 (e8 pc 77.49 vs 77.58; e16 rand 78.70/.712 vs
+     78.46–79.00) — REVE features do NOT help on 2-channel 100-Hz-native data
+     (upsampled to 200 Hz; unusual Fpz-Cz/Pz-Oz derivations). Informative negative:
+     the foundation-feature payoff tracks recording richness (4 ch/256 Hz HMC and
+     6 ch/200 Hz P2018 gain; 2 ch/100 Hz SEDF doesn't).
+   - Extraction costs: SEDF 13 min; P2018 60 min (994 records).
+   - Still open: REVE-Large stack (gate access pending), REVE-feature transfer donors.
+   CSVs: results/phase4/reve_stack/{sedf_finetune,p2018_finetune}.csv.
 
 ## 6. ✅ Your verification — *(reserved for Mahdiar)*
 

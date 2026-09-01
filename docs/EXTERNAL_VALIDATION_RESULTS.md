@@ -15,6 +15,21 @@ EXP-0026 (transfer). All fine-tuned, subject-disjoint, published-protocol evalua
 | The SOTA gap is missing bidirectional context | EXP-0027: adding the SOTA models' sequence stage (bidirectional transformer head, matched window) moves ≤1 acc at e8 and ≈0 at matched budget, on all three datasets — consistent with EXP-0023's twin (+0.9 offline). Residual gap = the epoch-level feature extractor (fixed Welch tokens vs learned intra-epoch encoders) | **Refuted — strengthens the streaming claim: causality costs ≈1 point** |
 | Gap to bidirectional supervised SOTA | P2018 c3 (input-identical): −6.6 acc to SleePyCo; 6-ch recovers +1.9; residual ≈ model class/context — the quantity the causal/streaming claim (Gate 3) trades against | Quantified |
 
+## REVE stacking (EXP-0028, Aug 31 – Sep 1)
+
+| Corpus | Our tf64 | REVE stack (frozen REVE-base + our causal decoder) | Best published |
+|---|---|---|---|
+| HMC (BAC/κ) | 73.8 / .668 | **75.6 ± 0.3 / .685** (balanced loss) · 74.0 / **.695** (their loss) | REVE's own full FT 74.0 / .698 |
+| P2018 (acc/κ) | 76.1 / .684 | **78.3 / .710** | SleePyCo 80.9 / .737 (bidirectional) |
+| Sleep-EDF (acc/κ) | 77.6–79.0 / .70–.72 | 77.5–78.7 / .70–.71 (≈ parity) | 84.9 / .789 (bidirectional) |
+
+Frozen REVE + our 11M causal decoder **beats REVE's own fine-tune on HMC** (+1.5 BAC,
+tie under their loss convention at a fraction of the adaptation compute), gains +2.2
+acc on P2018 (gap to SleePyCo halved, causal/real-time preserved), and is parity on
+2-ch 100-Hz Sleep-EDF — the payoff tracks recording richness. In-domain PC pretraining
+of the decoder: null on all three (5th–7th replications). Sequence context over
+foundation-model epoch features is the cheapest upgrade, and it need not cost real time.
+
 ## Protocol notes (for the paper's reproducibility appendix)
 - HMC: NeuroLM positional split (SN001–102 / 103–127 / 128–154 = 100/25/26), no wake
   trim, all scored epochs (91,248/22,124/23,871 — matches NeuroLM Table 1 exactly);
