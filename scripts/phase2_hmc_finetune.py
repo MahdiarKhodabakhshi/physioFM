@@ -142,6 +142,8 @@ def main() -> None:
     ap.add_argument("--ft_seed", type=int, default=42)
     ap.add_argument("--tag", default="")
     ap.add_argument("--head", choices=["linear", "context"], default="linear")
+    ap.add_argument("--class_weight", choices=["balanced", "none"], default="balanced",
+                    help="'none' = plain CE (the NeuroLM-ladder convention favours kappa/wF1)")
     ap.add_argument("--lookahead", type=int, default=-1)
     ap.add_argument("--out_csv", default="results/phase4/hmc/finetune.csv")
     args = ap.parse_args()
@@ -173,6 +175,8 @@ def main() -> None:
         allc = np.concatenate([labels[i] for i in range(len(trials)) if tr_m[i]])
         cnt = np.bincount(allc[allc >= 0], minlength=N_CLASSES).astype(np.float64)
         class_w = (cnt.sum() / (N_CLASSES * np.maximum(cnt, 1))).tolist()
+        if args.class_weight == "none":
+            class_w = [1.0] * N_CLASSES
 
         for frac in sorted(args.label_fracs):
             tr_f = mask_labels([(s, l) for s, l in tr], frac, seed=args.ft_seed) if frac < 1.0 else tr

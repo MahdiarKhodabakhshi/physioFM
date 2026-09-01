@@ -20,7 +20,7 @@ for SEED in $SEEDS; do
     if [ -f "$OUT/$ARM/DONE" ]; then echo "skip pretrain seed$SEED/$ARM"; continue; fi
     echo "[$(stamp)] pretrain seed$SEED $ARM"
     "$PY" scripts/phase2_pretrain.py --variant scratch --datasets hmc_reve_pretrain \
-      --p_in 1 --p_out 16 --batch 16 --seed "$SEED" --objective input --epochs "$EP" \
+      --p_in 1 --p_out 16 --batch "${BATCH:-4}" --seed "$SEED" --objective input --epochs "$EP" \
       --output_dir "$OUT" --tag "$ARM" \
       2>&1 | tee "$ROOT/logs/pretrain_seed${SEED}_${ARM}.log" \
            | { grep -E "epoch (1|30|60)/|corpus|params" || true; }
