@@ -43,7 +43,7 @@ LOG = logging.getLogger("p2018_ft")
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arch_key", default="p2018_tf64", choices=["p2018_tf64", "p2018_tf64_c3"])
+    ap.add_argument("--arch_key", default="p2018_tf64")
     ap.add_argument("--labels", default="data/physiofm/tf_features/p2018_labels.npz")
     ap.add_argument("--pretrain_root", default="results/phase4/p2018/pretrain")
     ap.add_argument("--arms", nargs="+", default=["pc", "rand"])
