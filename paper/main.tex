@@ -1,0 +1,155 @@
+% ICASSP 2027 draft — compiled against IEEEtran (conference mode) because spconf.sty
+% is not vendored here; for the camera-ready, replace the \documentclass line with
+% \documentclass{article}\usepackage{spconf} and adjust \name/\address per template.
+\documentclass[conference,10pt]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage[hidelinks]{hyperref}
+\usepackage{graphicx}
+
+\newcommand{\model}{PhysioFM-S}
+\newcommand{\best}[1]{\textbf{#1}}
+
+\begin{document}
+
+\title{A Lightweight Causal Decoder Improves EEG Foundation Models\\for Real-Time Sleep Staging}
+
+% TODO: check ICASSP 2027 blinding rules before submission.
+\author{\IEEEauthorblockN{Mahdiar Khodabakhshi}
+\IEEEauthorblockA{National Research Council Canada\\ \texttt{TODO@nrc-cnrc.gc.ca}}
+\and
+\IEEEauthorblockN{TODO Supervisor}
+\IEEEauthorblockA{TODO Affiliation}}
+
+\maketitle
+
+\begin{abstract}
+State-of-the-art automatic sleep staging is dominated by two model families that are both incompatible with real-time use: bidirectional sequence models that read up to 35 epochs of \emph{future} context, and large EEG foundation models that classify each 30-second epoch \emph{independently}. We show that a single lightweight recipe---a causal transformer decoder (3.5--11M parameters) over per-epoch features---bridges both gaps. Trained on fixed spectral tokens, the decoder is competitive with billion-token foundation models on the standard HMC benchmark at $\sim$1/100th their size. Stacked on \emph{frozen} features from the strongest foundation model (REVE), it produces the best published-protocol HMC result on every metric (balanced accuracy 75.1, $\kappa$ 0.705, weighted-F1 77.0 over 8 seeds), surpassing REVE's own full fine-tuning while training only the decoder---and, unlike every model above it, it emits decisions causally at one-epoch latency. Controlled experiments across three corpora (Sleep-EDF-78, HMC, Physio2018; published splits throughout) further show that (i) the cost of causality is $\approx$1 accuracy point, not the 3--7 points leaderboard gaps suggest; (ii) in-domain self-supervised pretraining of the decoder is null even with 994 training subjects; and (iii) pretraining pays only as a carrier of \emph{out-of-domain} structure---cross-corpus transfer on simple features (+3.1) and foundation-model features are substitutes, not additive.
+\end{abstract}
+
+\begin{IEEEkeywords}
+sleep staging, EEG, foundation models, causal transformers, real-time, self-supervised learning
+\end{IEEEkeywords}
+
+\section{Introduction}
+Automatic sleep staging assigns one of five stages (W, N1, N2, N3, REM) to each 30-second EEG epoch. The best published systems are \emph{offline}: SeqSleepNet-lineage models \cite{seqsleepnet,xsleepnet,sleeptransformer,sleepyco} classify an epoch from a bidirectional window of 10--35 neighbouring epochs, while U-Time-style architectures segment whole nights at once \cite{utime,usleep}. A newer family of EEG \emph{foundation models}---BIOT \cite{biot}, LaBraM \cite{labram}, EEGPT \cite{eegpt}, CBraMod \cite{cbramod}, NeuroLM \cite{neurolm}, and most recently REVE \cite{reve}, pretrained on 60{,}000 hours of EEG---approaches the same benchmarks from the opposite direction: enormous pretrained epoch encoders that classify each epoch \emph{with no inter-epoch context at all}. Neither family can drive the growing set of applications that need staging \emph{as the night unfolds}: closed-loop stimulation, on-device monitoring, and adaptive interventions.
+
+This paper asks how much of the offline systems' advantage actually requires their machinery, and answers with a deliberately small model: \model{}, a causal transformer decoder over per-epoch feature tokens, fine-tuned end-to-end. Our contributions:
+\begin{enumerate}
+\item \textbf{A strong real-time operating point.} On the fixed published HMC split, \model{} over 64-bin spectral tokens reaches balanced accuracy (BAC) 73.8 / $\kappa$ 0.668 (8 seeds)---above all but one published EEG foundation model at $\sim$1/100th the parameters---while emitting decisions causally with $O(1)$ compute per epoch.
+\item \textbf{Improving a foundation model without fine-tuning it.} Stacking the decoder on \emph{frozen} REVE features yields the best published-protocol HMC result on every metric, surpassing REVE's own LoRA fine-tuning (10 runs, model souping) while training only an 11M-parameter decoder. A context-free probe control attributes the entire gain to inter-epoch sequence modeling.
+\item \textbf{The price of causality is $\approx$1 point.} Giving our model the offline systems' bidirectional sequence stage---including a receptive-field-matched variant---moves results by $\leq$1 accuracy point across three corpora, and a fully bidirectional twin gains only +0.9 offline while losing 5.0 online. The remaining gap to offline SOTA is localized in the epoch-level feature extractor, not in missing future context.
+\item \textbf{When pretraining pays.} Across 20+ controlled pretraining comparisons: in-domain predictive-coding pretraining of the decoder is null everywhere (even at 994 subjects); cross-corpus transfer on simple features is robustly positive (+3.1$\pm$0.3); and on foundation-model features the transfer effect vanishes---the two mechanisms are substitutes, both supplying out-of-domain structure.
+\end{enumerate}
+
+\section{Method}
+\subsection{Tokens}
+A recording is a sequence of 30-s epochs. Each epoch becomes one token:
+\textbf{(a) Spectral (tf64):} per channel, 64 log-spaced Welch log-power bins (0.5--49\,Hz, 4-s sub-windows), flattened over $C$ channels; normalized by per-(channel, bin) statistics fixed on the training corpus (no per-recording normalization).
+\textbf{(b) Foundation (REVE):} the epoch is preprocessed exactly as in REVE's released pipeline and passed through the \emph{frozen} REVE encoder \cite{reve}; per-channel mean over its 1-s patch embeddings gives a $C\times D$ token ($D{=}512$ Base, $1216$ Large).
+\textbf{(c) Per-electrode:} variant of (a)/(b) with one sequence per channel (tokens $1\times D$); channel-count-agnostic, which enables full-weight transfer between corpora with different montages; per-epoch predictions average over channels.
+
+\subsection{Causal decoder}
+Tokens pass a linear embedding into a 6-layer causal transformer decoder (width 256, 8 heads, RoPE; 2.4--11M parameters depending on token width, built from TimesFM-2.5 decoder blocks \cite{timesfm}), followed by a linear classifier on each epoch's hidden state. Attention is strictly causal: the prediction for epoch $t$ uses epochs $\leq t$ only, so inference streams with a KV-cache at one token per decision. For analysis we also train (i) a bidirectional twin (identical stack, full attention) and (ii) a bidirectional \emph{context head} (2-layer transformer, 1.1M parameters, optional band-limited attention) on top of the causal features, replicating the sequence stage of offline SOTA systems.
+
+\subsection{Training and pretraining}
+Fine-tuning is end-to-end with class-balanced cross-entropy (we also report plain cross-entropy where the comparison ladder uses it), 8--20 epochs, best epoch by validation $\kappa$ where the published protocol selects on validation. Self-supervised \emph{predictive-coding} (PC) pretraining trains the same decoder to regress the next 16 tokens (multi-step MSE) on unlabeled sequences; every pretrained model is paired with a random-initialization control under an identical schedule. Cross-corpus \emph{transfer} pretrains on a donor corpus and fine-tunes on the target; per-electrode tokens allow moving \emph{all} weights across montages. Pretraining corpora never contain target-corpus test subjects.
+
+\section{Experimental setup}
+\textbf{Corpora and protocols (all published splits).}
+\emph{HMC} \cite{hmc}: 151 clinical PSGs, 4 EEG @256\,Hz; fixed split (100/25/26 recordings) and metrics (BAC/$\kappa$/weighted-F1, pooled test epochs) of the NeuroLM protocol \cite{neurolm}, reproduced bit-exactly (137{,}243 epochs).
+\emph{Physio2018} \cite{physio2018}: 994 labeled records, 6 EEG @200\,Hz; SleePyCo's released 5-fold subject-disjoint assignment \cite{sleepyco}, metrics pooled over all test epochs (accuracy/MF1/$\kappa$).
+\emph{Sleep-EDF-78} \cite{sleepedf}: 153 recordings, 2 EEG @100\,Hz; 5-fold subject-disjoint CV, standard $\pm$30-min trim.
+REVE's pretraining corpus excludes HMC recordings and contains neither Sleep-EDF nor Physio2018 \cite{reve}, so no stacked result inherits leakage. Results average 3--8 seeds (seed-matched pretrain/fine-tune); mean$\pm$sd reported.
+
+\section{Results}
+
+\begin{table}[t]
+\centering
+\caption{HMC, fixed published split (test: 26 subjects / 23{,}871 epochs). FM = pretrained EEG foundation model (full fine-tune). Our rows: 8 seeds. $^\dagger$plain-CE arm (ladder loss convention); $^\ddagger$class-balanced arm.}
+\label{tab:hmc}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{lccc}
+\toprule
+Model & BAC & $\kappa$ & wF1 \\
+\midrule
+NeuroLM-B \cite{neurolm} (FM) & .674 & .619 & .713 \\
+BIOT \cite{biot} (FM) & .686 & .630 & .709 \\
+EEGPT \cite{eegpt} (FM) & .703 & .658 & .732 \\
+CBraMod \cite{cbramod} (FM) & .727 & .669 & .740 \\
+LaBraM-Base \cite{labram} (FM) & .729 & .681 & .755 \\
+REVE-Base full fine-tune \cite{reve} (FM) & .740 & .698 & .764 \\
+\midrule
+\model{} tf64, from scratch (3.5M) & .738 & .668 & .745 \\
+frozen REVE-B, per-epoch probe (control) & .724 & .649 & .727 \\
+frozen REVE-B + \model{} decoder$^\ddagger$ & .752 & .684 & .756 \\
+frozen REVE-L + \model{} decoder$^\ddagger$ & \best{.758} & .695 & .765 \\
+frozen REVE-L + \model{} decoder$^\dagger$ & .751 & \best{.705} & \best{.770} \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{A small causal model on the foundation-model ladder}
+Table~\ref{tab:hmc}: trained from scratch on one corpus, \model{} over spectral tokens is second of seven on BAC among published foundation models. Stacked on frozen REVE features, the decoder surpasses \emph{every} published row: +1.1 to +1.8 BAC over REVE's own fine-tuning, and under the ladder's plain-CE convention it leads on all three metrics ($\kappa$ 0.705$\pm$0.006, wF1 77.0). The gain is attributable: a per-epoch probe on the same frozen features (no sequence context) scores 4--5 BAC points lower. REVE classifies each epoch independently; a 45-second-per-seed decoder training supplies what its 60{,}000-hour pretraining does not---and the composite remains causal, streaming at one-epoch latency, whereas every other row in the table is offline.
+
+\begin{table}[t]
+\centering
+\caption{Physio2018 (SleePyCo's exact folds; pooled 892{,}200 test epochs) and Sleep-EDF-78 (5-fold). Published offline models use bidirectional multi-epoch context.}
+\label{tab:p2018}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{llccc}
+\toprule
+Corpus & Model & acc & MF1 & $\kappa$ \\
+\midrule
+\multirow{5}{*}{P2018}
+& U-Time \cite{utime} (offline) & 78.8 & 77.4 & .714 \\
+& SeqSleepNet \cite{seqsleepnet} (offline) & 79.4 & 77.6 & .719 \\
+& SleePyCo \cite{sleepyco} (offline) & \best{80.9} & \best{78.9} & \best{.737} \\
+& \model{} tf64 (causal) & 76.1 & 75.2 & .684 \\
+& frozen REVE-B + \model{} (causal) & 78.3 & 77.3 & .710 \\
+\midrule
+\multirow{3}{*}{SEDF-78}
+& XSleepNet2 \cite{xsleepnet} (offline) & \best{84.0} & 77.9 & \best{.778} \\
+& \model{} tf64 (causal, 3 seeds) & 78.7$\pm$0.2 & 74.4 & .713 \\
+& \ \ + P2018 transfer (per-electrode) & 78.4$\pm$0.4 & 74.5 & .712 \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Large supervised benchmarks and the cost of causality}
+Table~\ref{tab:p2018}: on Physio2018 the stack reaches 78.3/$\kappa$0.710---past U-Time, 2.6 points from SleePyCo---and on Sleep-EDF 78.7/$\kappa$0.713, 5.3 from XSleepNet2. Every model above ours is bidirectional and offline. Is the gap the missing future context? No: (i) adding the offline systems' bidirectional sequence stage on top of our features (unrestricted, or band-limited to their $\pm$10-epoch effective receptive field) changes results by $\leq$1 point on all three corpora and $\approx$0 at matched training budget; (ii) the fully bidirectional twin gains only +0.9 offline; (iii) when \emph{all} models must decide from the past only, the causal model is unchanged (online = offline by construction) while the bidirectional twin drops 3.7 points, losing to it by 5.0. The residual offline gap therefore lives in the epoch-level feature extractor---consistent with the stack results, where replacing spectral tokens by learned REVE features recovers +2.2 (P2018) and +1.4--2.0 BAC (HMC), on richer montages ($\geq$4 channels, $\geq$200\,Hz); on 2-channel 100-Hz Sleep-EDF, foundation features add nothing over 64-bin spectra.
+
+\begin{table}[t]
+\centering
+\caption{When does pretraining help? Paired pretrained-vs-random comparisons under identical fine-tuning. In-domain PC: predictive coding on the target corpus. Transfer: donor-corpus pretraining, full weights via per-electrode tokens.}
+\label{tab:pretrain}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{llc}
+\toprule
+Setting & Corpus (features) & $\Delta$ vs.\ random init \\
+\midrule
+In-domain PC & SEDF-78 (tf64, 4 seeds) & +0.9 acc (n.s.) \\
+In-domain PC & HMC (tf64, 8 seeds) & +0.0$\pm$1.3 BAC \\
+In-domain PC & P2018 (tf64, 994 subj.) & +0.001 $\kappa$ \\
+In-domain PC & HMC (REVE-B/L, 8 seeds) & $-$0.5 / $-$0.4 BAC (n.s.) \\
+\midrule
+P2018$\rightarrow$SEDF transfer & SEDF-78 (tf64, 4 repl.) & \best{+3.1$\pm$0.3 acc} \\
+P2018$\rightarrow$SEDF transfer & SEDF-78 (REVE-B, 3 seeds) & +0.3 acc (n.s.) \\
+\bottomrule
+\end{tabular}}
+\end{table}
+
+\subsection{Pretraining helps only as an out-of-domain carrier}
+Table~\ref{tab:pretrain} condenses 20+ paired comparisons. In-domain self-supervised pretraining of the sequence decoder is null on every corpus and feature type---including at 994 training subjects, ruling out data scarcity as the explanation, and echoing in-domain nulls reported for BENDR and mulEEG \cite{bendr,muleeg}. Two interventions do help, and by similar amounts: cross-corpus transfer of a per-electrode model pretrained on the largest corpus (+3.1$\pm$0.3, every replicate positive, two independent donors---in the range reported for supervised transfer \cite{sleeptransformer,phan2020transfer}); and replacing spectral tokens with foundation-model features. Crucially they do not add: on REVE features the transfer effect collapses to +0.3, and the plain decoder on REVE features already sits where the spectral-token transfer arm lands. Both mechanisms inject structure learned \emph{outside} the target corpus; once one supplies it, the other is redundant. This offers a unifying reading of the mixed SSL-for-sleep literature: pretraining pays in proportion to the out-of-domain knowledge it imports, not as in-domain regularization.
+
+\section{Relation to prior work}
+Offline sequence models \cite{seqsleepnet,xsleepnet,sleeptransformer,sleepyco,utime} own the leaderboards but read the future; RobustSleepNet and U-Sleep study cross-dataset robustness \cite{robustsleepnet,usleep}. EEG foundation models \cite{biot,labram,eegpt,cbramod,neurolm,reve} pretrain at scale but classify sleep epochs context-free ($\leq$30\,s inputs). Our result composes the two: frozen foundation features $\times$ causal sequence decoding, with the composition---not either part---setting the benchmark state of the art on HMC, in real time. Methodologically, all comparisons use released splits and protocols (NeuroLM's HMC pipeline; SleePyCo's fold file), with pretraining corpora audited against target test subjects.
+
+\section{Conclusion}
+A 3.5--11M-parameter causal decoder over per-epoch features is enough to (i) rival EEG foundation models from scratch, (ii) beat the strongest one on its own benchmark by adding the inter-epoch modeling it lacks---without fine-tuning it---and (iii) do so at one-epoch streaming latency. The measured price of causality ($\approx$1 point) reframes real-time sleep staging as nearly free, and the pretraining analysis locates the value of self-supervision in out-of-domain structure. Scaling the donor corpus (e.g., SHHS) and learned epoch encoders under the same causal recipe are natural next steps.
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}
